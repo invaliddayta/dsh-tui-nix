@@ -1,0 +1,3 @@
+# User-owned loader patch entries are applied after the packaged bundles.
+# This file is preserved when the package refreshes its managed profile files.
+[]

@@ -1,0 +1,63 @@
+{
+  "nodes": {
+    "deepseek-harness-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1788415378,
+        "narHash": "sha256-YWZzUWiwVt4jUk7FYMtzt7c+Cj+lUX5++OVaVb6MO0c=",
+        "owner": "deepseek-ai",
+        "repo": "deepseek-harness",
+        "rev": "76fda729799fe9b3848dbe2c211d4b231032b81e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "deepseek-ai",
+        "repo": "deepseek-harness",
+        "rev": "76fda729799fe9b3848dbe2c211d4b231032b81e",
+        "type": "github"
+      }
+    },
+    "dsh-tui-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1786675326,
+        "narHash": "sha256-DjUAgkGc8X5WzAmr1mpBZprKWiW8Qu0h9FOVr1mjEjU=",
+        "owner": "dsh-tui",
+        "repo": "dsh-tui",
+        "rev": "8bdc850732464e2c10278f47b4f2b82da38d801e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "dsh-tui",
+        "repo": "dsh-tui",
+        "rev": "8bdc850732464e2c10278f47b4f2b82da38d801e",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1788316716,
+        "narHash": "sha256-bc7rSpXIdn9QWGNqfWcPZWOhEVF8NoeAZkWq0XWnf/k=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "3ed67ec0a4d3c7ab4ae1f04f8ee8df07bfa506a2",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "3ed67ec0a4d3c7ab4ae1f04f8ee8df07bfa506a2",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "deepseek-harness-src": "deepseek-harness-src",
+        "dsh-tui-src": "dsh-tui-src",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

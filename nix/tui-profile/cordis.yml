@@ -1,0 +1,3 @@
+# The profile is composed from the bundles in package.json, this empty root,
+# cordis.patch.yml, and any command-line patch overlays.
+[]

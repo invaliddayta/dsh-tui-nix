@@ -1,0 +1,14 @@
+{
+  "name": "deepseek-harness-tui-profile",
+  "private": true,
+  "dependencies": {},
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@dsh-tui/dsh-tui"
+      ],
+      "patchReload": "startup"
+    }
+  }
+}

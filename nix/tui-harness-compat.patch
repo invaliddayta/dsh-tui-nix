@@ -1,0 +1,87 @@
+--- a/src/chat/questions.ts
++++ b/src/chat/questions.ts
+@@ -9 +9,2 @@
++import type { Agent } from '@deepseek-ai/dsh-agent'
+ import { errorChain } from '@deepseek-ai/dsh-llm'
+@@ -32,2 +33,4 @@
+ export interface QuestionQueueDeps extends ChatChannelDeps {
++  /** Agent scope that owns the human answerer. */
++  readonly agent: Agent
+   /** Current row budget after reserving the editor. */
+@@ -51 +54 @@
+-  const { ctx, resolved, palette, overlayManager } = deps
++  const { resolved, palette, overlayManager } = deps
+@@ -130,28 +133,26 @@
+-  const unregister = ctx.userQuestions.registerProvider({
+-    ask(request) {
+-      return new Promise<AskUserQuestionAnswer>((resolveAnswer, reject) => {
+-        const pending: PendingQuestion = {
+-          request,
+-          index: 0,
+-          answers: [],
+-          resolve: resolveAnswer,
+-          reject,
+-          overlay: undefined,
+-          onAbort: () => {
+-            if (activeQuestion === pending) {
+-              activeQuestion = undefined
+-              rejectQuestion(pending)
+-              startNextQuestion()
+-              return
+-            }
+-            // A non-active pending ask remains in the queue until this listener settles it.
+-            questionQueue.splice(questionQueue.indexOf(pending), 1)
+-            rejectQuestion(pending)
+-          },
+-        }
+-        request.signal?.addEventListener('abort', pending.onAbort, { once: true })
+-        questionQueue.push(pending)
+-        startNextQuestion()
+-      })
+-    },
+-  })
++  const unregister = deps.agent.ctx.on('user-questions/request', request =>
++    new Promise<AskUserQuestionAnswer>((resolveAnswer, reject) => {
++      const pending: PendingQuestion = {
++        request,
++        index: 0,
++        answers: [],
++        resolve: resolveAnswer,
++        reject,
++        overlay: undefined,
++        onAbort: () => {
++          if (activeQuestion === pending) {
++            activeQuestion = undefined
++            rejectQuestion(pending)
++            startNextQuestion()
++            return
++          }
++          // A non-active pending ask remains in the queue until this listener settles it.
++          questionQueue.splice(questionQueue.indexOf(pending), 1)
++          rejectQuestion(pending)
++        },
++      }
++      request.signal?.addEventListener('abort', pending.onAbort, { once: true })
++      questionQueue.push(pending)
++      startNextQuestion()
++    }),
++  )
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -972,3 +972,4 @@
+   const questions = createQuestionQueue({
+     ctx,
++    agent,
+     resolved,
+@@ -1855,4 +1856,9 @@
+     ctx.effect(() => {
+-      const controller = createTuiChat(ctx, config, runtime)
+-      return () => controller.dispose()
++      try {
++        const controller = createTuiChat(ctx, config, runtime)
++        return () => controller.dispose()
++      } catch (error) {
++        runtime.terminal.write(displayText(`ui-tui: failed to start: ${errorChain(error)}\n`))
++        runtime.exit(1)
++      }
+     }, 'ui-tui')
