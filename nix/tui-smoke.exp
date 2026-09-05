@@ -1,0 +1,34 @@
+set timeout 20
+
+proc fail {message} {
+    puts stderr $message
+    exit 1
+}
+
+spawn sh -c {stty rows 24 cols 80; exec "$@"} sh {*}$argv
+expect {
+    -re {main-session-} {}
+    timeout {fail "TUI did not render inside a pseudo-terminal"}
+    eof {fail "TUI exited before rendering inside a pseudo-terminal"}
+}
+after 1000
+send "/model"
+after 100
+send "\r"
+expect {
+    -re {Select model} {}
+    -re {Command failed} {fail "TUI model command failed"}
+    timeout {fail "TUI model selector did not open"}
+    eof {fail "TUI exited before opening the model selector"}
+}
+send "\033"
+after 200
+send "\003"
+expect {
+    eof {}
+    timeout {fail "TUI did not exit after Ctrl-C"}
+}
+set status [wait]
+if {[lindex $status 2] != 0 || [lindex $status 3] != 0 || [llength $status] > 4} {
+    fail "TUI did not exit cleanly: $status"
+}

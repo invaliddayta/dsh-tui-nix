@@ -39,4 +39,4 @@ jobs:
         run: nix flake check --no-build --all-systems
 
       - name: Build and run install checks
-        run: nix build --max-jobs 1 --cores 2 --print-build-logs .#packages.${{ matrix.system }}.default
+        run: nix flake check --max-jobs 1 --cores 2 --print-build-logs

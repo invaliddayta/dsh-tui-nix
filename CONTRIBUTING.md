@@ -8,7 +8,7 @@ Before submitting a packaging change, run:
 
 ```sh
 nix flake check --no-build --all-systems
-nix build --max-jobs 1 --cores 2 .#deepseek-harness-tui
+nix flake check --max-jobs 1 --cores 2
 ```
 
-If your change touches a source pin or the runtime dependency selection, build it natively on both supported architectures.
+If your change touches a source pin, compatibility patch, or the runtime dependency selection, run the checks natively on both supported architectures.

@@ -362,48 +362,8 @@ stdenv.mkDerivation (finalAttrs: {
       exit 1
     fi
     grep -F "ui-tui: both stdin and stdout must be TTYs" "$TMPDIR/dsh-tui.stderr" >/dev/null
-    expect <<EOF
-    set timeout 20
-    spawn sh -c "stty rows 24 cols 80; exec env DSH_HOME=$TMPDIR/dsh-pty-home TERM=xterm-256color $out/bin/dsh-tui"
-    expect {
-      -re {main-session-} {
-        after 1000
-        send "/model"
-        after 100
-        send "\r"
-        expect {
-          -re {Select model} {
-            send "\033"
-            after 200
-            send "\003"
-            expect {
-              eof {}
-              timeout {
-                puts stderr "TUI did not exit after Ctrl-C"
-                exit 1
-              }
-            }
-          }
-          -re {Command failed} {
-            puts stderr "TUI model command failed"
-            exit 1
-          }
-          timeout {
-            puts stderr "TUI model selector did not open"
-            exit 1
-          }
-        }
-      }
-      timeout {
-        puts stderr "TUI did not render inside a pseudo-terminal"
-        exit 1
-      }
-      eof {
-        puts stderr "TUI exited before rendering inside a pseudo-terminal"
-        exit 1
-      }
-    }
-    EOF
+    DSH_HOME="$TMPDIR/dsh-pty-home" TERM=xterm-256color \
+      expect ${./tui-smoke.exp} "$out/bin/dsh-tui"
 
     runHook postInstallCheck
   '';

@@ -61,6 +61,18 @@
       checks = forAllSystems (system: {
         package = self.packages.${system}.default;
         tui = self.packages.${system}.tui;
+        compatibility = import ./nix/tui-checks.nix {
+          package = self.packages.${system}.default;
+        };
+        smoke-test =
+          nixpkgs.legacyPackages.${system}.runCommand "tui-smoke-test-check"
+            {
+              nativeBuildInputs = [ nixpkgs.legacyPackages.${system}.expect ];
+            }
+            ''
+              bash ${./tests/smoke.sh} ${./nix/tui-smoke.exp}
+              touch "$out"
+            '';
       });
 
       formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-tree);

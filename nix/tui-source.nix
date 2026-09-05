@@ -61,6 +61,7 @@ stdenvNoCC.mkDerivation {
 
   postPatch = ''
     patch -p1 < ${./tui-harness-compat.patch}
+    patch -p1 < ${./tui-session-compat.patch}
     substituteInPlace src/startup.ts \
       --replace-fail 'dsh --profile tui' 'dsh-tui'
     substituteInPlace src/chat/skill-invocation.ts \
@@ -71,8 +72,6 @@ stdenvNoCC.mkDerivation {
       --replace-fail 'session.events' 'session.snapshotEvents()'
     substituteInPlace src/index.ts \
       --replace-fail 'agent.session.events' 'agent.session.snapshotEvents()'
-    substituteInPlace src/chat/resume.ts \
-      --replace-fail 'live.events.at(-1)' 'live.snapshotEvents().at(-1)'
     substituteInPlace src/index.ts \
       --replace-fail \
         'ctx.commands.execute(agent, text, controller.signal)' \
@@ -112,7 +111,7 @@ stdenvNoCC.mkDerivation {
     done
     grep -F 'from "@deepseek-ai/dsh-util-values"' "$out/package/lib/index.js" >/dev/null
     grep -F 'session.snapshotEvents()' "$out/package/lib/index.js" >/dev/null
-    grep -F 'live.snapshotEvents().at(-1)' "$out/package/lib/index.js" >/dev/null
+    grep -F 'foldSessionTitle(snapshot.events)' "$out/package/lib/index.js" >/dev/null
     if grep -F 'live.events' "$out/package/lib/index.js" >/dev/null; then
       echo "source-built TUI still reads the removed Session.events property" >&2
       exit 1

@@ -73,7 +73,7 @@
      ctx,
 +    agent,
      resolved,
-@@ -1855,4 +1856,9 @@
+@@ -1855,4 +1856,10 @@
      ctx.effect(() => {
 -      const controller = createTuiChat(ctx, config, runtime)
 -      return () => controller.dispose()
@@ -83,5 +83,6 @@
 +      } catch (error) {
 +        runtime.terminal.write(displayText(`ui-tui: failed to start: ${errorChain(error)}\n`))
 +        runtime.exit(1)
++        return () => {}
 +      }
      }, 'ui-tui')

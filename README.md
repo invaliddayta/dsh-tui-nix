@@ -42,8 +42,17 @@ Session telemetry is disabled by default. The agent can run model-generated comm
 
 ```sh
 nix flake check --no-build --all-systems
-nix build --max-jobs 1 --cores 2 .#deepseek-harness-tui
+nix flake check --max-jobs 1 --cores 2
 ```
+
+The build checks include the packaged PTY smoke test, regressions for premature
+child exits, a type check against the exact packaged Harness peers, and focused
+question-answering, cancellation, and session-resume tests. CI runs them on both
+supported architectures.
+
+The session compatibility patch uses validated query-service log reads for resume
+titles and last-event timestamps. Reads are concurrency-limited; browsing a large
+history can take longer than a metadata-only scan.
 
 ## License
 
