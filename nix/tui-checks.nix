@@ -2,6 +2,11 @@
 
 package.tui.overrideAttrs (_: {
   pname = "dsh-tui-compatibility-check";
+  # Native test tooling reserves large virtual address ranges on x86_64.
+  # Keep NODE_OPTIONS and worker limits, but do not inherit the build's ulimit -v.
+  preConfigure = ''
+    node ${./project-tui-dependencies.mjs}
+  '';
   buildPhase = ''
     runHook preBuild
     # Resolve the patched source against the shipped peers, never npm peers.
