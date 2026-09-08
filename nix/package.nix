@@ -5,6 +5,9 @@
   nodejs-slim_24,
   pnpm_11,
   fetchPnpmDeps,
+  fetchFromGitHub,
+  fetchpatch,
+  typescript,
   pnpmConfigHook,
   makeWrapper,
   autoPatchelfHook,
@@ -40,16 +43,44 @@ let
     )
   }";
   limitBuildMemory = ''
-    currentLimit=$(ulimit -v)
-    if [ "$currentLimit" = unlimited ] || [ "$currentLimit" -gt 10485760 ]; then
-      ulimit -v 10485760
+    dshOriginalVirtualMemoryLimit=$(ulimit -S -v)
+    if [ "$dshOriginalVirtualMemoryLimit" = unlimited ] || [ "$dshOriginalVirtualMemoryLimit" -gt 10485760 ]; then
+      ulimit -S -v 10485760
     fi
   '';
+  # Backport the upstream Pi-AI update without unrelated Harness/session changes.
+  # Remove these when the Harness pin includes both commits.
+  piAiPatches =
+    map
+      (
+        { rev, hash }:
+        fetchpatch {
+          url = "https://github.com/deepseek-ai/deepseek-harness/commit/${rev}.patch";
+          inherit hash;
+          includes = [
+            "packages/llm/llm-pi-ai/*"
+            "pnpm-lock.yaml"
+            "pnpm-workspace.yaml"
+          ];
+        }
+      )
+      [
+        {
+          rev = "69a0441c34019fbb416db35eec0a48470391ddd7";
+          hash = "sha256-AY38vMsX046BCjmz32nJfCHyOH0yX1/jU19oRIRQ1HU=";
+        }
+        {
+          rev = "7bab91d247e4a7a2e84c68e1883359f5dc718e6a";
+          hash = "sha256-ACJJtmU7ecHW7y+jUi0bhjlpovjZ0mkcD6INTF/WxHQ=";
+        }
+      ];
   projectRuntime = ''
+    ${lib.concatMapStringsSep "\n" (patch: "patch -p1 --fuzz=0 < ${patch}") piAiPatches}
+    # Selected workspaces need their Node half, never their browser bundle.
+    patch -p1 --fuzz=0 < ${./harness-host-build.patch}
     mkdir -p nix
     cp ${./project-tui-runtime.mjs} nix/project-tui-runtime.mjs
-    cp ${./select-build-projects.mjs} nix/select-build-projects.mjs
-    cp ${./build-missing-node-entries.mjs} nix/build-missing-node-entries.mjs
+    cp ${./build-runtime.mjs} nix/build-runtime.mjs
     YQ=${lib.getExe yq-go} DSH_TUI_MANIFEST=${dsh-tui-src}/package.json \
       ${lib.getExe nodejs-slim_24} nix/project-tui-runtime.mjs
   '';
@@ -104,6 +135,16 @@ let
     dshTuiPatch = ./dsh-tui.cordis.patch.yml;
   };
 
+  providers = import ./providers.nix {
+    inherit
+      lib
+      stdenvNoCC
+      nodejs-slim_24
+      typescript
+      fetchFromGitHub
+      ;
+  };
+
   pnpmDeps = fetchPnpmDeps {
     pname = "deepseek-harness-tui-runtime";
     inherit version pnpm;
@@ -114,8 +155,10 @@ let
       "@deepseek-ai/dsh-typert-generator..."
     ];
     fetcherVersion = 4;
-    hash = "sha256-vgsX2q1x8YCFw69sjqKOJx0Q4JWFvONq3agiScVM/fw=";
+    hash = "sha256-S/3+HQZslFySRdiGAFMO2/NBxxHMNGlrMh1f2sYyh+0=";
     env.NODE_OPTIONS = "--max-old-space-size=2048";
+    # pnpm workers each reserve a V8 code range under our address-space limit.
+    env.PNPM_MAX_WORKERS = "1";
     nativeBuildInputs = [ yq-go ];
     prePnpmInstall = ''
       ${limitBuildMemory}
@@ -158,6 +201,7 @@ stdenv.mkDerivation (finalAttrs: {
   autoPatchelfIgnoreMissingDeps = [ "libc.musl-*.so.*" ];
 
   env.NODE_OPTIONS = "--max-old-space-size=4096";
+  env.PNPM_MAX_WORKERS = "1";
   env.pnpm_config_child_concurrency = 2;
   env.pnpm_config_network_concurrency = 8;
 
@@ -169,45 +213,7 @@ stdenv.mkDerivation (finalAttrs: {
   buildPhase = ''
     runHook preBuild
 
-    ${lib.getExe nodejs-slim_24} --input-type=module <<'EOF'
-    import { readFileSync, writeFileSync } from 'node:fs'
-    const packages = JSON.parse(readFileSync('nix/tui-runtime-workspaces.json', 'utf8'))
-    packages.push({ name: '@deepseek-ai/dsh-typert-generator', path: 'packages/typert/generator' })
-    writeFileSync('nix/tui-build-workspaces.json', JSON.stringify(packages))
-    EOF
-
-    export DSH_TSDOWN_FILTER=$(${lib.getExe nodejs-slim_24} --input-type=module <<'EOF'
-    import { readFileSync } from 'node:fs'
-    const packages = JSON.parse(readFileSync('nix/tui-runtime-workspaces.json', 'utf8'))
-    const names = packages.map(({ name }) => name.replace(/[|\\{}()[\]^$+*?.-]/g, '\\$&'))
-    if (names.length === 0) throw new Error('TUI runtime package set is empty')
-    process.stdout.write(`^(?:''${names.join('|')})$`)
-    EOF
-    )
-
-    ${lib.getExe nodejs-slim_24} \
-      nix/select-build-projects.mjs \
-      nix/tui-build-workspaces.json tsconfig.host.json nix/tui-host-projects.txt
-    mapfile -t buildProjects < nix/tui-host-projects.txt
-    if [ "''${#buildProjects[@]}" -eq 0 ]; then
-      echo "TUI host TypeScript project set is empty" >&2
-      exit 1
-    fi
-    ${lib.getExe nodejs-slim_24} --max-old-space-size=4096 \
-      ./node_modules/typescript/bin/tsc -b "''${buildProjects[@]}"
-
-    DSH_BUILD_FACE=host ${lib.getExe nodejs-slim_24} --input-type=module <<'EOF'
-    import { readFileSync } from 'node:fs'
-    import { build } from 'tsdown'
-    const packages = JSON.parse(readFileSync('nix/tui-runtime-workspaces.json', 'utf8'))
-    await build({
-      env: { DSH_BUILD_FACE: 'host' },
-      filter: new RegExp(process.env.DSH_TSDOWN_FILTER),
-      workspace: packages.map(({ path }) => path).filter(path => !path.startsWith('native/')),
-    })
-    EOF
-
-    ${lib.getExe nodejs-slim_24} nix/build-missing-node-entries.mjs
+    ${lib.getExe nodejs-slim_24} nix/build-runtime.mjs
 
     mkdir -p native/landlock-run/packages/linux-${stdenv.hostPlatform.node.arch}/bin
     ${lib.getExe pkgsStatic.stdenv.cc} \
@@ -227,8 +233,12 @@ stdenv.mkDerivation (finalAttrs: {
       --config.link-workspace-packages=true \
       deploy "$out/libexec/dsh"
 
+    # pnpm deployment state embeds timestamps and temporary build-store paths.
+    rm -f "$out/libexec/dsh/node_modules/"{.modules.yaml,.pnpm-workspace-state-v1.json}
+
     mkdir -p "$out/libexec/dsh/node_modules/@dsh-tui"
     cp -a ${tui}/package "$out/libexec/dsh/node_modules/@dsh-tui/dsh-tui"
+    cp -a ${providers}/package "$out/libexec/dsh/node_modules/@dsh-tui/providers"
 
     mkdir -p "$out/share/dsh/profiles/${profileName}"
     cp -r ${./tui-profile}/. "$out/share/dsh/profiles/${profileName}/"
@@ -239,6 +249,7 @@ stdenv.mkDerivation (finalAttrs: {
     cp ${harness-src}/LICENSE "$licenseDir/DEEPSEEK-HARNESS-LICENSE"
     cp ${harness-src}/THIRD_PARTY_NOTICES.md "$licenseDir/THIRD_PARTY_NOTICES.md"
     cp ${dsh-tui-src}/LICENSE "$licenseDir/DSH-TUI-LICENSE"
+    cp ${providers}/package/UPSTREAM-LICENSE "$licenseDir/PROVIDER-WIZARD-LICENSE"
 
     mkdir -p "$out/libexec/dsh/bin"
     makeWrapper ${lib.getExe nodejs-slim_24} "$out/libexec/dsh/bin/dsh" \
@@ -287,8 +298,31 @@ stdenv.mkDerivation (finalAttrs: {
 
   doInstallCheck = true;
   installCheckPhase = ''
+    # V8 test workers reserve more address space than the build cap permits.
+    # Restore the caller's limit, keeping the heap and worker limits in place.
+    ulimit -S -v "$dshOriginalVirtualMemoryLimit"
     runHook preInstallCheck
 
+    node --input-type=module <<'EOF'
+    import assert from 'node:assert/strict'
+    import { existsSync, readFileSync } from 'node:fs'
+    import { join } from 'node:path'
+    const packages = JSON.parse(readFileSync('nix/tui-runtime-workspaces.json', 'utf8'))
+    for (const { name, path } of packages) {
+      if (path.startsWith('native/')) continue
+      const root = name === '@deepseek-ai/dsh' ? process.env.out + '/libexec/dsh'
+        : join(process.env.out, 'libexec/dsh/node_modules', name)
+      const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+      if (manifest.main) assert(existsSync(join(root, manifest.main)), name + ' is missing its Node entry')
+      if (manifest.dsh?.client) assert(!existsSync(join(root, 'lib/client.js')), name + ' contains a browser bundle')
+    }
+    EOF
+
+    # Upstream tests resolve this peer through tsconfig paths; use its built workspace here.
+    mkdir -p node_modules/@deepseek-ai
+    ln -s "$PWD/packages/settings/settings-file" node_modules/@deepseek-ai/dsh-settings-file
+    pnpm exec vitest run packages/llm/llm-pi-ai/tests/{catalog,compat-upgrade,convert}.spec.ts \
+      --maxWorkers=1
     test "$("$out/libexec/dsh/bin/dsh" --version)" = "${finalAttrs.version}"
     test ! -e "$out/libexec/dsh/node_modules/@deepseek-ai/dsh-web-app"
     test ! -e "$out/libexec/dsh/node_modules/@deepseek-ai/dsh-web-frontend"
@@ -296,12 +330,20 @@ stdenv.mkDerivation (finalAttrs: {
     test ! -e "$out/libexec/dsh/node_modules/@deepseek-ai/dsh-terminal-bash"
     test ! -e "$out/libexec/dsh/node_modules/@deepseek-ai/dsh-api-gateway"
     test ! -e "$out/libexec/dsh/node_modules/@deepseek-ai/dsh-command-feedback"
-    test ! -e "$out/libexec/dsh/node_modules/@deepseek-ai/dsh-llm-pi-ai"
+    test -e "$out/libexec/dsh/node_modules/@deepseek-ai/dsh-llm-pi-ai"
     test ! -e "$out/libexec/dsh/node_modules/@deepseek-ai/dsh-session-telemetry-otel"
-    test ! -e "$out/libexec/dsh/node_modules/@earendil-works/pi-ai"
-    test ! -e "$out/libexec/dsh/node_modules/@opentelemetry"
-    test ! -e "$out/libexec/dsh/node_modules/express"
-    test ! -e "$out/libexec/dsh/node_modules/hono"
+    test -e "$out/libexec/dsh/node_modules/@earendil-works/pi-ai"
+    test ! -e "$out/libexec/dsh/node_modules/react"
+    test ! -e "$out/libexec/dsh/node_modules/.modules.yaml"
+    test ! -e "$out/libexec/dsh/node_modules/.pnpm-workspace-state-v1.json"
+    test ! -e "$out/libexec/dsh/node_modules/react-reconciler"
+    test ! -e "$out/libexec/dsh/node_modules/@dsh-tui/providers/src"
+    test ! -e "$out/libexec/dsh/node_modules/@deepseek-harness-tui/dsh-auth"
+    node ${../tests/provider-authorization.mjs} "$out/libexec/dsh"
+    # Provider SDKs bring the OTel API and HTTP libraries, but no exporter.
+    for telemetryPackage in "$out/libexec/dsh/node_modules/@opentelemetry/"{sdk-*,exporter-*}; do
+      test ! -e "$telemetryPackage"
+    done
     grep -F 'mode: !!js' "$out/libexec/dsh/node_modules/@deepseek-ai/dsh-base/cordis.patch.yml" >/dev/null
     grep -F 'policy: !!js' "$out/libexec/dsh/node_modules/@deepseek-ai/dsh-base/cordis.patch.yml" >/dev/null
     for clientPackage in "$out/libexec/dsh/node_modules/@deepseek-ai/dsh-client-"*; do
@@ -353,6 +395,8 @@ stdenv.mkDerivation (finalAttrs: {
 
     "$out/libexec/dsh/bin/dsh" --profile ${profileName} --dump-config > "$TMPDIR/dsh-tui-config"
     grep -F "@dsh-tui/dsh-tui" "$TMPDIR/dsh-tui-config" >/dev/null
+    grep -F "@deepseek-ai/dsh-llm-pi-ai" "$TMPDIR/dsh-tui-config" >/dev/null
+    grep -F "@dsh-tui/providers" "$TMPDIR/dsh-tui-config" >/dev/null
     if grep -F "@deepseek-ai/dsh-web-app" "$TMPDIR/dsh-tui-config" >/dev/null; then
       echo "TUI profile contains the Web application bundle" >&2
       exit 1
@@ -364,11 +408,13 @@ stdenv.mkDerivation (finalAttrs: {
     grep -F "ui-tui: both stdin and stdout must be TTYs" "$TMPDIR/dsh-tui.stderr" >/dev/null
     DSH_HOME="$TMPDIR/dsh-pty-home" TERM=xterm-256color \
       expect ${./tui-smoke.exp} "$out/bin/dsh-tui"
+    DSH_HOME="$TMPDIR/dsh-provider-pty-home" TERM=xterm-256color \
+      expect ${./provider-smoke.exp} "$out/bin/dsh-tui"
 
     runHook postInstallCheck
   '';
 
-  passthru = { inherit pnpmDeps tui; };
+  passthru = { inherit pnpmDeps tui providers; };
 
   meta = {
     description = "Slim, source-built DeepSeek Harness terminal UI";

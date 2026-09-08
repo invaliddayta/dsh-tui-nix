@@ -25,6 +25,7 @@ let
     fetcherVersion = 4;
     hash = "sha256-JcIhS0Yhf0oFnOMEWmWdfJ5y8qcx7fFG4fo6sUwl1Ks=";
     env.NODE_OPTIONS = "--max-old-space-size=2048";
+    env.PNPM_MAX_WORKERS = "1";
     nativeBuildInputs = [ yq-go ];
     prePnpmInstall = ''
       ${limitBuildMemory}
@@ -50,6 +51,7 @@ stdenvNoCC.mkDerivation {
   ];
 
   env.NODE_OPTIONS = "--max-old-space-size=3072";
+  env.PNPM_MAX_WORKERS = "1";
   env.pnpm_config_child_concurrency = 2;
   env.pnpm_config_network_concurrency = 8;
   env.pnpm_config_auto_install_peers = "false";
@@ -60,8 +62,19 @@ stdenvNoCC.mkDerivation {
   '';
 
   postPatch = ''
+    cp ${./provider-widgets.ts} src/provider-widgets.ts
+    substituteInPlace tsdown.config.ts \
+      --replace-fail "'src/startup.ts']" "'src/startup.ts', 'src/provider-widgets.ts']"
+    node --input-type=module <<'EOF'
+    import { readFileSync, writeFileSync } from 'node:fs'
+    const manifest = JSON.parse(readFileSync('package.json', 'utf8'))
+    manifest.exports['./provider-widgets'] = './lib/provider-widgets.js'
+    writeFileSync('package.json', JSON.stringify(manifest, null, 2))
+    EOF
     patch -p1 < ${./tui-harness-compat.patch}
     patch -p1 < ${./tui-session-compat.patch}
+    patch -p1 --fuzz=0 < ${./tui-reasoning-effort.patch}
+    patch -p1 --fuzz=0 < ${./tui-command-history.patch}
     substituteInPlace src/startup.ts \
       --replace-fail 'dsh --profile tui' 'dsh-tui'
     substituteInPlace src/chat/skill-invocation.ts \
@@ -91,6 +104,8 @@ stdenvNoCC.mkDerivation {
       --config.auto-install-peers=false \
       --config.node-linker=hoisted \
       deploy "$out/package"
+    # Installation state is not runtime data and contains non-reproducible paths/times.
+    rm -f "$out/package/node_modules/"{.modules.yaml,.pnpm-workspace-state-v1.json}
     rm -rf "$out/package/lib"
     cp -a lib "$out/package/lib"
     cp ${dshTuiPatch} "$out/package/cordis.patch.yml"
@@ -103,6 +118,8 @@ stdenvNoCC.mkDerivation {
 
     test -f "$out/package/lib/index.js"
     test -f "$out/package/lib/startup.js"
+    test ! -e "$out/package/node_modules/.modules.yaml"
+    test ! -e "$out/package/node_modules/.pnpm-workspace-state-v1.json"
     for harnessPeer in "$out/package/node_modules/@deepseek-ai/"*; do
       if [ -e "$harnessPeer" ]; then
         echo "source-built TUI contains auto-installed Harness peers" >&2

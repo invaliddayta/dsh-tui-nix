@@ -1,0 +1,11 @@
+--- a/packages/client/tsdown.client.ts
++++ b/packages/client/tsdown.client.ts
+@@ -115,7 +115,7 @@
+     const clientEntry = face === undefined ? 'src/client/index.ts' : 'lib/types/client/index.js'
+     const client = clientConfig(id, clientEntry)
+     const node = [lib, ...(options.companions ?? [])]
+-    if (face === 'host') return options.hostPhase === true ? node : [SKIP_WORKSPACE_BUILD]
++    if (face === 'host') return node
+     if (face === 'client') {
+       return options.hostPhase === true ? [client] : [...node, client]
+     }

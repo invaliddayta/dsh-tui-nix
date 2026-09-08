@@ -1,0 +1,29 @@
+set timeout 20
+spawn sh -c {stty rows 24 cols 80; exec "$@"} sh {*}$argv
+expect {
+    -re {main-session-} {}
+    timeout {exit 1}
+    eof {exit 1}
+}
+after 1000
+send "/provider\r"
+expect {
+    -re {Provider setup} {}
+    timeout {exit 1}
+    eof {exit 1}
+}
+send "\r"
+expect {
+    -re {Choose a provider} {}
+    timeout {exit 1}
+    eof {exit 1}
+}
+send "\033"
+after 300
+send "\003"
+expect {
+    eof {}
+    timeout {exit 1}
+}
+set status [wait]
+if {[lindex $status 2] != 0 || [lindex $status 3] != 0 || [llength $status] > 4} {exit 1}

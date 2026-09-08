@@ -1,7 +1,6 @@
-import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, posix, resolve } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { globSync, readFileSync, writeFileSync } from 'node:fs'
+import { posix, resolve } from 'node:path'
 
 const ROOT = process.cwd()
 const CLI_NAME = '@deepseek-ai/dsh'
@@ -16,7 +15,6 @@ const FORBIDDEN_PACKAGES = new Set([
 ])
 const OMITTED_BASE_ROWS = [
   { id: 'command-feedback', package: '@deepseek-ai/dsh-command-feedback' },
-  { id: 'llm-pi-ai', package: '@deepseek-ai/dsh-llm-pi-ai' },
   { id: 'session-telemetry-otel', package: '@deepseek-ai/dsh-session-telemetry-otel' },
   { id: 'typert-gateway', package: '@deepseek-ai/dsh-api-gateway' },
 ]
@@ -40,28 +38,11 @@ function readJson(path) {
   return JSON.parse(readFileSync(resolve(ROOT, path), 'utf8'))
 }
 
-function packagePaths() {
-  const paths = []
-  for (const name of readdirSync(resolve(ROOT, 'vendor'), { withFileTypes: true })) {
-    if (name.isDirectory()) paths.push(posix.join('vendor', name.name, 'package.json'))
-  }
-  for (const group of readdirSync(resolve(ROOT, 'packages'), { withFileTypes: true })) {
-    if (!group.isDirectory()) continue
-    for (const name of readdirSync(resolve(ROOT, 'packages', group.name), { withFileTypes: true })) {
-      if (name.isDirectory()) paths.push(posix.join('packages', group.name, name.name, 'package.json'))
-    }
-  }
-  for (const name of readdirSync(resolve(ROOT, 'native/landlock-run/packages'), { withFileTypes: true })) {
-    if (name.isDirectory()) paths.push(posix.join('native/landlock-run/packages', name.name, 'package.json'))
-  }
-  for (const name of readdirSync(resolve(ROOT, 'apps'), { withFileTypes: true })) {
-    if (name.isDirectory()) paths.push(posix.join('apps', name.name, 'package.json'))
-  }
-  return paths
-}
-
 const packages = new Map()
-for (const manifestPath of packagePaths()) {
+for (const manifestPath of globSync([
+  'vendor/*/package.json', 'packages/*/*/package.json',
+  'native/landlock-run/packages/*/package.json', 'apps/*/package.json',
+])) {
   const manifest = readJson(manifestPath)
   if (typeof manifest.name !== 'string') continue
   if (packages.has(manifest.name)) throw new Error(`duplicate workspace package ${manifest.name}`)
@@ -146,26 +127,12 @@ delete cliPackage.manifest.devDependencies
 writeFileSync(resolve(ROOT, CLI_PATH, 'package.json'), `${JSON.stringify(cliPackage.manifest, null, 2)}\n`)
 
 function runYq(args, input) {
-  const result = spawnSync(process.env.YQ ?? 'yq', args, {
+  return execFileSync(process.env.YQ ?? 'yq', args, {
     cwd: ROOT,
     encoding: 'utf8',
     input,
     maxBuffer: 64 * 1024 * 1024,
   })
-  if (result.error !== undefined) throw result.error
-  if (result.status !== 0) throw new Error(`yq ${args.join(' ')} failed: ${result.stderr}`)
-  return result.stdout
-}
-
-function writeYaml(path, value, temporaryPrefix) {
-  const temporaryDirectory = mkdtempSync(join(tmpdir(), temporaryPrefix))
-  try {
-    const jsonPath = join(temporaryDirectory, 'input.json')
-    writeFileSync(jsonPath, JSON.stringify(value))
-    writeFileSync(path, runYq(['-P', '-o=yaml', '.', jsonPath]))
-  } finally {
-    rmSync(temporaryDirectory, { recursive: true, force: true })
-  }
 }
 
 const lockPath = resolve(ROOT, 'pnpm-lock.yaml')
@@ -199,7 +166,7 @@ const workspaceLockDependencies = Object.fromEntries(
 cliImporter.dependencies = { ...workspaceLockDependencies, ...externalLockDependencies }
 delete cliImporter.devDependencies
 
-writeYaml(lockPath, lock, 'dsh-tui-lock-')
+writeFileSync(lockPath, runYq(['-P', '-o=yaml', '.'], JSON.stringify(lock)))
 
 const runtimePackages = [
   { name: CLI_NAME, path: CLI_PATH },

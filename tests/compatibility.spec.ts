@@ -1,7 +1,56 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { Context } from '@deepseek-ai/cordis'
+import LlmRuntime from '@deepseek-ai/dsh-llm'
+import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
+import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
+import FileSettingsProvider from '@deepseek-ai/dsh-settings-file'
 import { SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import { createTuiTestHarness, disposeTuiTestHarness } from './harness.ts'
 import { HeadlessTerminal } from './headless-terminal.ts'
+
+it('registers configured Pi providers beside direct DeepSeek without network access', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-tui-providers-'))
+  const ctx = new Context()
+  try {
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(FileSettingsProvider, { path: join(root, 'settings.yaml'), watch: false })
+    await ctx.plugin(LlmDeepSeek)
+    await ctx.plugin(LlmPiAi)
+    expect(ctx.llm.listProviders().map(provider => provider.id)).toEqual(['deepseek-official'])
+
+    await ctx.settings.update('llm-pi-ai', {
+      providers: {
+        openai: { apiKeyEnv: 'OPENAI_API_KEY' },
+        anthropic: { apiKeyEnv: 'ANTHROPIC_API_KEY' },
+        google: { apiKeyEnv: 'GEMINI_API_KEY' },
+        openrouter: { apiKeyEnv: 'OPENROUTER_API_KEY' },
+        local: {
+          api: 'openai-completions',
+          baseURL: 'http://127.0.0.1:1/v1',
+          models: [{ id: 'local-test-model', contextWindow: 32768 }],
+        },
+      },
+    })
+    expect(ctx.llm.listProviders().map(provider => provider.id).sort()).toEqual([
+      'anthropic', 'deepseek-official', 'google', 'local', 'openai', 'openrouter',
+    ])
+    for (const provider of ['deepseek-official', 'openai', 'anthropic', 'google', 'openrouter']) {
+      expect((await ctx.llm.listModels(provider)).length).toBeGreaterThan(0)
+    }
+    expect(await ctx.llm.resolveModelInfo('local', 'local-test-model')).toMatchObject({
+      provider: 'local', id: 'local-test-model', context: { contextWindow: 32768 },
+    })
+
+    await ctx.settings.replace('llm-pi-ai', {})
+    expect(ctx.llm.listProviders().map(provider => provider.id)).toEqual(['deepseek-official'])
+  } finally {
+    await ctx.fiber.dispose()
+    await rm(root, { recursive: true, force: true })
+  }
+})
 
 describe('packaged Harness compatibility', () => {
   let terminal: HeadlessTerminal

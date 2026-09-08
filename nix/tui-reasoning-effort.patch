@@ -1,0 +1,98 @@
+--- a/src/chat/model-command.ts
++++ b/src/chat/model-command.ts
+@@ -13,1 +13,0 @@
+-import { displayText } from '../components/text.ts'
+@@ -18,1 +17,0 @@
+-  targetReasoningLabel,
+@@ -35,2 +33,4 @@
+   queueModelCommand(raw: string): void
++  /** Cycle the current model's advertised effort from the chat prompt. */
++  queueReasoningCycle(): void
+   /** Drop the pending context-window resolution (shutdown). */
+@@ -109,5 +109,1 @@
+-    if (sameRoute && target.current?.reasoningEffort === reasoningEffort) {
+-      const reasoning = targetReasoningLabel(selected, reasoningEffort)
+-      deps.appendNotice(`Model is already ${targetLabel(selected)}${reasoning === undefined ? '' : ` with reasoning effort ${displayText(reasoning)}`}.`)
+-      return
+-    }
++    if (sameRoute && target.current?.reasoningEffort === reasoningEffort) return
+@@ -120,6 +116,1 @@
+-    const reasoning = targetReasoningLabel(selected, reasoningEffort)
+-    deps.appendNotice([
+-      `Model selected: ${targetLabel(selected)}.`,
+-      ...reasoning === undefined ? [] : [`Reasoning effort: ${displayText(reasoning)}.`],
+-      'New steps will use it.',
+-    ].join(' '))
++    deps.requestRender()
+@@ -205,2 +196,33 @@
+     },
++    queueReasoningCycle(): void {
++      // Share the model-command queue so rapid presses cannot overwrite each other.
++      modelCommands = modelCommands.then(async () => {
++        if (deps.isDisposed()) return
++        const current = target.current
++        if (current === undefined) {
++          deps.appendNotice('Select a model with /model before changing reasoning effort.', 'warning')
++          return
++        }
++        const info = await ctx.llm.resolveModelInfo(current.provider, current.model)
++        if (deps.isDisposed() || target.current !== current) return
++        const reasoning = info.reasoning
++        if (reasoning === undefined || reasoning.efforts.length === 0) {
++          deps.appendNotice(`${targetLabel(current)} does not advertise adjustable reasoning effort.`, 'warning')
++          return
++        }
++        const efforts: Array<ReasoningEffortId | undefined> = [
++          ...reasoning.defaultEffort === undefined ? [undefined] : [],
++          ...reasoning.efforts.map(effort => effort.id),
++        ]
++        const index = efforts.indexOf(current.reasoningEffort ?? reasoning.defaultEffort)
++        selectModel({
++          provider: current.provider,
++          model: current.model,
++          modelName: info.name,
++          reasoning,
++        }, { effort: efforts[(index + 1) % efforts.length] })
++      }).catch((error: unknown) => {
++        if (!deps.isDisposed()) deps.appendNotice(`Could not change reasoning effort: ${errorChain(error)}`, 'error')
++      })
++    },
+     resetContextResolution(): void {
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -16,2 +16,4 @@
+   matchesKey,
++  isKeyRelease,
++  isKeyRepeat,
+   visibleWidth,
+@@ -1178,2 +1180,3 @@
++      'Ctrl+T cycle model reasoning effort (chat prompt or model picker)',
+       'Ctrl+C cancel while running; clear input or exit while idle • Ctrl+D exit',
+       '',
+@@ -1614,6 +1617,11 @@
+ 
+   const removeInputListener = ui.addInputListener((data) => {
+     if (overlayManager.hasActiveOverlay()) return undefined
++    if (matchesKey(data, Key.ctrl('t'))) {
++      // Global listeners run before Pi-TUI filters key releases for components.
++      if (!isKeyRelease(data) && !isKeyRepeat(data)) modelController.queueReasoningCycle()
++      return { consume: true }
++    }
+     if (matchesKey(data, Key.ctrl('o'))) {
+       toggleTools()
+       return { consume: true }
+--- a/src/components/dialogs.ts
++++ b/src/components/dialogs.ts
+@@ -12,2 +12,4 @@
+   matchesKey,
++  isKeyRelease,
++  isKeyRepeat,
+   truncateToWidth,
+@@ -387,2 +389,2 @@
+-    if (matchesKey(data, Key.shift(Key.tab))) {
+-      this.cycleReasoningEffort()
++    if (matchesKey(data, Key.ctrl('t'))) {
++      if (!isKeyRelease(data) && !isKeyRepeat(data)) this.cycleReasoningEffort()
+@@ -425,1 +427,1 @@
+-      this.palette.dim('type to filter • ↑/↓ move • Shift+Tab reasoning • Enter select • Esc'),
++      this.palette.dim('type to filter | Up/Down move | Ctrl+T effort | Enter select | Esc'),

@@ -84,11 +84,13 @@ else
 fi
 
 tui_link_dir=$profile_dir/node_modules/@dsh-tui
-tui_link=$tui_link_dir/dsh-tui
 mkdir -p "$tui_link_dir"
-if [ -e "$tui_link" ] && [ ! -L "$tui_link" ]; then
-  printf '%s\n' "dsh-tui: refusing to replace non-symlink package path $tui_link" >&2
-  exit 1
-fi
-ln -sfn "@out@/libexec/dsh/node_modules/@dsh-tui/dsh-tui" "$tui_link"
+for package in dsh-tui providers; do
+  tui_link=$tui_link_dir/$package
+  if [ -e "$tui_link" ] && [ ! -L "$tui_link" ]; then
+    printf '%s\n' "dsh-tui: refusing to replace non-symlink package path $tui_link" >&2
+    exit 1
+  fi
+  ln -sfn "@out@/libexec/dsh/node_modules/@dsh-tui/$package" "$tui_link"
+done
 exec "@out@/libexec/dsh/bin/dsh" --profile "$profile_name" "$@"
