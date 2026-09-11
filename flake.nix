@@ -64,6 +64,15 @@
         compatibility = import ./nix/tui-checks.nix {
           package = self.packages.${system}.default;
         };
+        launcher =
+          nixpkgs.legacyPackages.${system}.runCommand "tui-launcher-check"
+            {
+              nativeBuildInputs = [ nixpkgs.legacyPackages.${system}.nodejs-slim_24 ];
+            }
+            ''
+              DSH_LAUNCHER_SOURCE=${./nix} node --test ${./tests/launcher.test.mjs}
+              touch "$out"
+            '';
         smoke-test =
           nixpkgs.legacyPackages.${system}.runCommand "tui-smoke-test-check"
             {

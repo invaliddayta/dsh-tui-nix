@@ -40,7 +40,7 @@ profile_is_owned() {
 
 managed_profile_exists() {
   for file in package.json cordis.yml pnpm-workspace.yaml; do
-    [ ! -e "$profile_dir/$file" ] || return 0
+    [ ! -e "$profile_dir/$file" ] && [ ! -L "$profile_dir/$file" ] || return 0
   done
   return 1
 }
@@ -51,12 +51,12 @@ seed_profile() {
   for file in package.json cordis.yml pnpm-workspace.yaml; do
     install_profile_file "$template_dir/$file" "$profile_dir/$file"
   done
-  if [ ! -e "$profile_dir/cordis.patch.yml" ]; then
+  if [ ! -e "$profile_dir/cordis.patch.yml" ] && [ ! -L "$profile_dir/cordis.patch.yml" ]; then
     temporary_patch=$profile_dir/.cordis.patch.yml.tmp.$$
     cp "$template_dir/cordis.patch.yml" "$temporary_patch"
     chmod u+w "$temporary_patch"
     if ! ln "$temporary_patch" "$profile_dir/cordis.patch.yml" 2>/dev/null; then
-      if [ ! -e "$profile_dir/cordis.patch.yml" ]; then
+      if [ ! -e "$profile_dir/cordis.patch.yml" ] && [ ! -L "$profile_dir/cordis.patch.yml" ]; then
         rm -f "$temporary_patch"
         return 1
       fi
