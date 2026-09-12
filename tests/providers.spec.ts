@@ -8,6 +8,7 @@ import LlmRuntime from '@deepseek-ai/dsh-llm'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
 import FileSettingsProvider from '@deepseek-ai/dsh-settings-file'
 import LocalCredentials from '@deepseek-ai/dsh-credentials-local'
+import { credentialKey } from '@deepseek-ai/dsh-credentials'
 import Authorization from '@deepseek-ai/dsh-authorization'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRegistry from '@deepseek-ai/dsh-tools'
@@ -118,6 +119,28 @@ it('signs into OpenAI with a fabricated API key entirely through private dialogs
   await expect(logout).resolves.toMatchObject({ result: { kind: 'success' } })
   expect(await harness.ctx.credentials.listRecords()).toEqual([])
   expect(harness.ctx.llm.listProviders().map(provider => provider.id)).not.toContain('openai')
+})
+
+it.each(['Sign in', 'Sign out'])('refuses %s for externally owned credentials before changing settings or starting authorization', async action => {
+  const key = credentialKey('llm-pi-ai', 'openai')
+  await harness.ctx.credentials.modifyRecord(key, async () => ({ kind: 'api-key', key: 'fabricated' }))
+  await harness.ctx.settings.update('llm-pi-ai', { providers: { openai: {} } })
+  vi.spyOn(harness.ctx.credentials, 'describeRecord').mockResolvedValue({
+    configured: true, kind: 'api-key', writable: false, owner: 'External vault',
+    diagnostic: { code: 'INVALID_CREDENTIAL', message: 'Repair this credential in the vault.' },
+  })
+  const begin = vi.spyOn(harness.ctx.authorization, 'begin')
+  const mutate = vi.spyOn(harness.ctx.settings, 'mutate')
+  const remove = vi.spyOn(harness.ctx.credentials, 'deleteRecord')
+  const result = harness.ctx.commands.execute(harness.agent, '/provider', [], new AbortController().signal)
+  await screen('Provider setup'); terminal.send(action); terminal.send('\r')
+  await screen('Choose a provider'); terminal.send('openai')
+  await screen('Managed by External vault'); terminal.send('\r')
+  await expect(result).resolves.toMatchObject({ result: { kind: 'error', text: 'This credential is read-only (managed by External vault). Repair this credential in the vault.' } })
+  expect(begin).not.toHaveBeenCalled()
+  expect(mutate).not.toHaveBeenCalled()
+  expect(remove).not.toHaveBeenCalled()
+  expect(harness.ctx.settings.get('llm-pi-ai')).toMatchObject({ providers: { openai: {} } })
 })
 
 it.each(['', 'sk-wizard-fabricated-key'])('configures a custom endpoint with private key input %j', async (apiKey) => {

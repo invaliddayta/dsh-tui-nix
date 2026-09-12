@@ -51,11 +51,21 @@ function mountProviderCommand(ctx: Context): void {
           const records = await ctx.credentials.listRecords()
           const candidates = action === 'Sign out' ? entries.filter(entry => records.some(record => record.key === entry.key)) : entries
           if (candidates.length === 0) return { kind: 'success', text: 'No matching provider credentials.' }
-          const provider = await pick(action === 'Sign in' ? 'Choose a provider' : 'Choose a provider to sign out', candidates.map(entry => ({
-            label: credentialKeyId(entry.key), description: `${entry.label} | ${entry.methods.map(method => method.label).join(', ')}`,
-          })))
+          const choices = await Promise.all(candidates.map(async entry => {
+            const info = await ctx.credentials.describeRecord(entry.key)
+            return {
+              label: credentialKeyId(entry.key),
+              description: [entry.label, info.owner ? `Managed by ${info.owner}` : entry.methods.map(method => method.label).join(', '), info.diagnostic?.message].filter(Boolean).join(' | '),
+            }
+          }))
+          const provider = await pick(action === 'Sign in' ? 'Choose a provider' : 'Choose a provider to sign out', choices)
           const entry = candidates.find(entry => credentialKeyId(entry.key) === provider)
           if (!entry || !provider) return { kind: 'success' }
+          const info = await ctx.credentials.describeRecord(entry.key)
+          if (!info.writable) return {
+            kind: 'error',
+            text: `This credential is read-only${info.owner ? ` (managed by ${info.owner})` : ''}. ${info.diagnostic?.message ?? 'Manage sign-in and refresh through its credential manager.'}`,
+          }
           if (action === 'Sign out') {
             if (await pick('Remove stored sign-in and disable this provider?', [{ label: 'Cancel' }, { label: 'Sign out' }], 'Environment keys and composition-base settings are not removed.') !== 'Sign out') return { kind: 'success' }
             const section = ctx.settings.describe().find(section => section.ns === 'llm-pi-ai')

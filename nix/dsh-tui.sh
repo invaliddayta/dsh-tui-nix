@@ -83,14 +83,13 @@ else
   fi
 fi
 
-tui_link_dir=$profile_dir/node_modules/@dsh-tui
-mkdir -p "$tui_link_dir"
-for package in dsh-tui providers; do
-  tui_link=$tui_link_dir/$package
+for package in @dsh-tui/dsh-tui @dsh-tui/providers dsh-credentials-opencode; do
+  tui_link=$profile_dir/node_modules/$package
+  mkdir -p "${tui_link%/*}"
   if [ -e "$tui_link" ] && [ ! -L "$tui_link" ]; then
     printf '%s\n' "dsh-tui: refusing to replace non-symlink package path $tui_link" >&2
     exit 1
   fi
-  ln -sfn "@out@/libexec/dsh/node_modules/@dsh-tui/$package" "$tui_link"
+  ln -sfn "@out@/libexec/dsh/node_modules/$package" "$tui_link"
 done
 exec "@out@/libexec/dsh/bin/dsh" --profile "$profile_name" "$@"

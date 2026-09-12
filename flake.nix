@@ -44,6 +44,7 @@
           default = package;
           deepseek-harness-tui = package;
           dsh-tui = package;
+          credentials-opencode = package.passthru.credentialsOpencode;
           harness-pnpm-deps = package.passthru.pnpmDeps;
           tui = package.passthru.tui;
           tui-pnpm-deps = package.passthru.tui.passthru.pnpmDeps;

@@ -1,0 +1,19 @@
+{
+  "name": "dsh-credentials-opencode",
+  "version": "0.1.0",
+  "description": "Optional read-only OpenCode credential provider for DeepSeek Harness",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": { "types": "./lib/index.d.ts", "default": "./lib/index.js" }
+  },
+  "files": ["lib", "README.md", "LICENSE"],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/schemastery": "^3.18.2",
+    "@deepseek-ai/dsh-credentials": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-credentials-local": "0.1.2-rc.1"
+  }
+}

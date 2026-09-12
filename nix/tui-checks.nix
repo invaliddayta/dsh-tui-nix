@@ -14,10 +14,12 @@ package.tui.overrideAttrs (_: {
     ln -s ${package}/libexec/dsh/node_modules/@dsh-tui node_modules/@dsh-tui
     pnpm exec tsc -p tsconfig.json --noEmit
     cp -r ${package.providers}/checks/src src/providers
+    mkdir -p src/credentials-opencode
+    cp ${package.credentialsOpencode}/checks/index.ts src/credentials-opencode/
     chmod -R u+w src/providers
     node --input-type=module <<'EOF'
     import { readFileSync, writeFileSync } from 'node:fs'
-    const config = { extends: './tsconfig.json', include: ['src/providers'], compilerOptions: { exactOptionalPropertyTypes: false } }
+    const config = { extends: './tsconfig.json', include: ['src/providers', 'src/credentials-opencode'], compilerOptions: { exactOptionalPropertyTypes: false } }
     config.compilerOptions.paths = {
       '@dsh-tui/dsh-tui': ['./src/index.ts'],
       '@dsh-tui/dsh-tui/provider-widgets': ['./src/provider-widgets.ts'],

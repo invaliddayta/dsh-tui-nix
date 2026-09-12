@@ -145,6 +145,10 @@ let
       ;
   };
 
+  credentialsOpencode = import ./credentials-opencode.nix {
+    inherit lib stdenvNoCC nodejs-slim_24 typescript;
+  };
+
   pnpmDeps = fetchPnpmDeps {
     pname = "deepseek-harness-tui-runtime";
     inherit version pnpm;
@@ -208,6 +212,7 @@ stdenv.mkDerivation (finalAttrs: {
   preConfigure = ''
     ${limitBuildMemory}
     ${projectRuntime}
+    patch -p1 --fuzz=0 < ${./harness-credential-ownership.patch}
   '';
 
   buildPhase = ''
@@ -239,6 +244,7 @@ stdenv.mkDerivation (finalAttrs: {
     mkdir -p "$out/libexec/dsh/node_modules/@dsh-tui"
     cp -a ${tui}/package "$out/libexec/dsh/node_modules/@dsh-tui/dsh-tui"
     cp -a ${providers}/package "$out/libexec/dsh/node_modules/@dsh-tui/providers"
+    cp -a ${credentialsOpencode}/package "$out/libexec/dsh/node_modules/dsh-credentials-opencode"
 
     mkdir -p "$out/share/dsh/profiles/${profileName}"
     cp -r ${./tui-profile}/. "$out/share/dsh/profiles/${profileName}/"
@@ -322,6 +328,7 @@ stdenv.mkDerivation (finalAttrs: {
     mkdir -p node_modules/@deepseek-ai
     ln -s "$PWD/packages/settings/settings-file" node_modules/@deepseek-ai/dsh-settings-file
     pnpm exec vitest run packages/llm/llm-pi-ai/tests/{catalog,compat-upgrade,convert}.spec.ts \
+      packages/credentials/authorization/tests \
       --maxWorkers=1
     test "$("$out/libexec/dsh/bin/dsh" --version)" = "${finalAttrs.version}"
     test ! -e "$out/libexec/dsh/node_modules/@deepseek-ai/dsh-web-app"
@@ -338,8 +345,14 @@ stdenv.mkDerivation (finalAttrs: {
     test ! -e "$out/libexec/dsh/node_modules/.pnpm-workspace-state-v1.json"
     test ! -e "$out/libexec/dsh/node_modules/react-reconciler"
     test ! -e "$out/libexec/dsh/node_modules/@dsh-tui/providers/src"
+    test ! -e "$out/libexec/dsh/node_modules/@dsh-tui/providers/lib/opencode-credentials.js"
+    test -e "$out/libexec/dsh/node_modules/dsh-credentials-opencode/lib/index.js"
+    test ! -e "$out/libexec/dsh/node_modules/dsh-credentials-opencode/index.ts"
     test ! -e "$out/libexec/dsh/node_modules/@deepseek-harness-tui/dsh-auth"
     node ${../tests/provider-authorization.mjs} "$out/libexec/dsh"
+    node ${../tests/opencode-credentials.mjs} "$out/libexec/dsh"
+    node ${../tests/opencode-profile.mjs} "$out/libexec/dsh" ${../README.md}
+    node ${../tests/credential-ownership.mjs} "$out/libexec/dsh"
     # Provider SDKs bring the OTel API and HTTP libraries, but no exporter.
     for telemetryPackage in "$out/libexec/dsh/node_modules/@opentelemetry/"{sdk-*,exporter-*}; do
       test ! -e "$telemetryPackage"
@@ -414,7 +427,7 @@ stdenv.mkDerivation (finalAttrs: {
     runHook postInstallCheck
   '';
 
-  passthru = { inherit pnpmDeps tui providers; };
+  passthru = { inherit pnpmDeps tui providers credentialsOpencode; };
 
   meta = {
     description = "Slim, source-built DeepSeek Harness terminal UI";
