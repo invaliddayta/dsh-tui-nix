@@ -1,0 +1,75 @@
+--- a/src/chat/model-command.ts
++++ b/src/chat/model-command.ts
+@@ -10,3 +10,4 @@
+ import type { ModelSelection, ModelSelectionRef } from '@deepseek-ai/dsh-agent'
++import type {} from '@deepseek-ai/dsh-agent-default-model'
+ import { errorChain, LlmError, type ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+ import type { TuiOverlaySession } from '../extension/types.ts'
+@@ -41,3 +42,5 @@
+   detach(): void
++  /** Drain accepted preference writes before the process exits. */
++  flushSelection(): Promise<void>
+ }
+ 
+@@ -56,6 +59,17 @@
+   let contextResolution: Promise<ContextResolution> | undefined
+   let modelOverlay: TuiOverlaySession | undefined
+   let modelCommands = Promise.resolve()
++  let preferenceWrites = Promise.resolve()
++  const rememberSelection = (selection: ModelSelection): void => {
++    const snapshot = { ...selection }
++    // Includes picker selections and Ctrl+T; never record previews, restoration,
++    // background-agent routing, or shutdown as a new human model choice.
++    preferenceWrites = preferenceWrites.then(() =>
++      ctx.get('agentDefaultModel')?.saveSelection(snapshot),
++    ).catch((error: unknown) => {
++      deps.appendNotice(`Model changed for this session, but could not save the startup default: ${errorChain(error)}`, 'warning')
++    })
++  }
+ 
+   // A route whose adapter has not registered yet. Loader activation order is
+   // service-driven, so the TUI can mount before a configured adapter plugin
+@@ -109,1 +123,4 @@
+-    if (sameRoute && target.current?.reasoningEffort === reasoningEffort) return
++    if (sameRoute && target.current !== undefined && target.current.reasoningEffort === reasoningEffort) {
++      rememberSelection(target.current)
++      return
++    }
+@@ -114,4 +131,5 @@
+     }
++    rememberSelection(target.current)
+     resolveContextWindow(target.current)
+     deps.requestRender()
+   }
+@@ -233,5 +251,6 @@
+     detach(): void {
+       disposeAdapterListener()
+     },
++    flushSelection: () => preferenceWrites,
+   }
+ }
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -1,0 +1,1 @@
++import type {} from '@deepseek-ai/dsh-agent-default-model'
+@@ -224,1 +225,1 @@
+-export const inject = ['agents', 'sessions', 'commands', 'userQuestions', 'tools', 'llm', 'systemPrompt', 'tokenMeter', 'tuiPrompt']
++export const inject = ['agents', 'sessions', 'commands', 'userQuestions', 'tools', 'llm', 'systemPrompt', 'tokenMeter', 'tuiPrompt', 'agentDefaultModel', 'settings']
+@@ -362,1 +363,11 @@
+-  const target: ModelSelectionRef = { current: initialTarget(agent), assembled: undefined }
++  const initial = initialTarget(agent)
++  const hasPreference = ctx.get('settings')?.describe({ redactSecrets: true })
++    .some((section: { ns: string; user?: unknown }) => section.ns === 'agent-default-model' && section.user !== undefined)
++  const remembered = hasPreference ? ctx.get('agentDefaultModel')?.currentSelection() : undefined
++  const target: ModelSelectionRef = {
++    // A resumed session's last request wins; absent a saved preference, keep the profile route.
++    current: agent.session.requestHeader() === undefined
++      ? remembered ?? initial ?? ctx.get('agentDefaultModel')?.currentSelection()
++      : initial,
++    assembled: undefined,
++  }
+@@ -1027,3 +1038,4 @@
+       questions.unregister()
++      await modelController.flushSelection()
+       await runtime.terminal.drainInput(100, 20)
+       ui.stop()

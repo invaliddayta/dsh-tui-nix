@@ -21,7 +21,7 @@ use DSH's native `/provider` sign-in without installing OpenCode.
 
 Inside the TUI, `/model` opens the model selector and `/model <provider>/<model-id>` switches directly. An unambiguous model ID also works without the provider prefix. The direct DeepSeek provider (`deepseek-official`) offers `deepseek-v4-flash`, `deepseek-v4-pro`, and `deepseek-v4-flash-vision-exp`.
 
-**Ctrl+T** at the chat prompt cycles the current model's advertised reasoning efforts, without reopening `/model` or submitting your draft. The chosen effort appears beside the model name and applies to new steps, not an already-running request. For Grok 4.6 the cycle is Default, Low, Medium, High, Xhigh, then Default again. Default leaves the effort unspecified; it does not disable reasoning. Inside `/model`, Ctrl+T previews the highlighted model's effort and Enter applies it. Kitty key-release and repeat events are ignored, so a press advances once. These are session selections, not changes to startup defaults; Ctrl+R only shows or hides reasoning text.
+**Ctrl+T** at the chat prompt cycles the current model's advertised reasoning efforts, without reopening `/model` or submitting your draft. The chosen effort appears beside the model name and applies to new steps, not an already-running request. For Grok 4.6 the cycle is Default, Low, Medium, High, Xhigh, then Default again. Default leaves the effort unspecified; it does not disable reasoning. Inside `/model`, Ctrl+T previews the highlighted model's effort and Enter applies it. Kitty key-release and repeat events are ignored, so a press advances once. Accepted model and effort selections also become the global startup default; previews and cancelled selections do not. Ctrl+R only shows or hides reasoning text.
 
 ## Other Providers
 
@@ -79,7 +79,18 @@ local:
 
 Use the model ID and limits your server actually supports. Pi's OpenAI-compatible client requires a credential even for a keyless local server; set `LOCAL_LLM_API_KEY=local` in that case. Select it with `/model local/your-installed-model`.
 
-DeepSeek remains the startup default. To use another provider for new sessions and the shared agent default, add these overrides to the profile's `cordis.patch.yml` (see below):
+Fresh sessions use the last model explicitly selected with `/model` (including an
+accepted picker selection and reasoning effort). It is stored in the existing
+`agent-default-model` section of `$DSH_HOME/settings.yaml`, globally across projects
+and profiles sharing that harness home. A resumed session keeps its last recorded
+request's model; merely resuming or closing it does not change the global preference.
+Concurrent sessions use the last successfully saved explicit selection, not the
+last session to exit. Invalid model commands and cancelled previews do not save.
+If saving fails, the current session still changes and the TUI shows a warning.
+
+Without a saved preference, the profile's configured startup model remains the
+fallback. To configure that fallback and the shared agent default, add these
+overrides to the profile's `cordis.patch.yml` (see below):
 
 ```yaml
 - id: agent-default-model
@@ -95,7 +106,13 @@ DeepSeek remains the startup default. To use another provider for new sessions a
         cwd: !!js process.cwd()
 ```
 
-The provider must also be configured in `settings.yaml` (in-app sign-in does this automatically). DeepSeek-backed Web search still needs `DEEPSEEK_API_KEY`; selecting another chat provider does not replace that tool's backend. `/model` changes the session selection, not the startup default.
+A saved `agent-default-model` user setting takes precedence over these fallback
+values; remove only that section from `settings.yaml` to return to the configured
+fallback. The provider must also be configured (in-app sign-in does this automatically).
+Remembering a model does not configure its credentials or silently switch to a
+different provider if it becomes unavailable; use `/provider` or `/model` to resolve
+that explicitly. DeepSeek-backed Web search still needs `DEEPSEEK_API_KEY`; selecting
+another chat provider does not replace that tool's backend.
 
 ### OpenCode-Owned Credentials
 

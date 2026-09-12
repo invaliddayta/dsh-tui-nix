@@ -31,7 +31,8 @@ package.tui.overrideAttrs (_: {
     cp ${../tests/compatibility.spec.ts} tests/nix-compatibility.spec.ts
     cp ${../tests/providers.spec.ts} tests/nix-providers.spec.ts
     cp ${../tests/reasoning.spec.ts} tests/nix-reasoning.spec.ts
-    pnpm exec vitest run tests/nix-compatibility.spec.ts tests/nix-providers.spec.ts tests/nix-reasoning.spec.ts --maxWorkers=1 --minWorkers=1
+    cp ${../tests/last-model.spec.ts} tests/nix-last-model.spec.ts
+    pnpm exec vitest run tests/nix-compatibility.spec.ts tests/nix-providers.spec.ts tests/nix-reasoning.spec.ts tests/nix-last-model.spec.ts --maxWorkers=1 --minWorkers=1
     mkdir -p wizard-check/scripts wizard-check/lib/types/dsh-adapter
     cp ${package.providers}/checks/scripts/verify-provider-wizard.mjs wizard-check/scripts/
     cp -r ${package.providers}/package/lib/upstream/. wizard-check/lib/types/

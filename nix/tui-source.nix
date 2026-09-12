@@ -75,6 +75,7 @@ stdenvNoCC.mkDerivation {
     patch -p1 < ${./tui-session-compat.patch}
     patch -p1 --fuzz=0 < ${./tui-reasoning-effort.patch}
     patch -p1 --fuzz=0 < ${./tui-command-history.patch}
+    patch -p1 --fuzz=0 < ${./tui-last-model.patch}
     substituteInPlace src/startup.ts \
       --replace-fail 'dsh --profile tui' 'dsh-tui'
     substituteInPlace src/chat/skill-invocation.ts \
