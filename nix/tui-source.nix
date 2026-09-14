@@ -63,6 +63,8 @@ stdenvNoCC.mkDerivation {
 
   postPatch = ''
     cp ${./provider-widgets.ts} src/provider-widgets.ts
+    cp ${./chat-fork.ts} src/chat/fork.ts
+    cp ${./session-fork.ts} src/chat/session-fork.ts
     substituteInPlace tsdown.config.ts \
       --replace-fail "'src/startup.ts']" "'src/startup.ts', 'src/provider-widgets.ts']"
     node --input-type=module <<'EOF'
@@ -76,6 +78,7 @@ stdenvNoCC.mkDerivation {
     patch -p1 --fuzz=0 < ${./tui-reasoning-effort.patch}
     patch -p1 --fuzz=0 < ${./tui-command-history.patch}
     patch -p1 --fuzz=0 < ${./tui-last-model.patch}
+    patch -p1 --fuzz=0 < ${./tui-fork.patch}
     substituteInPlace src/startup.ts \
       --replace-fail 'dsh --profile tui' 'dsh-tui'
     substituteInPlace src/chat/skill-invocation.ts \

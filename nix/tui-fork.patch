@@ -1,0 +1,41 @@
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -144,1 +144,2 @@
+-import { createResumeController } from './chat/resume.ts'
++import { createResumeController } from './chat/resume.ts'
++import { createForkController } from './chat/fork.ts'
+@@ -1012,1 +1013,3 @@
++  const fork = createForkController({ ctx, agent, runtime, ui, editor, appendNotice, requestRender, isDisposed })
++
+   const shutdown = (exitProcess: boolean): Promise<void> => {
+@@ -1369,2 +1376,8 @@
+     commandCtx.commands.register({
++      name: 'fork',
++      description: 'Branch this conversation and switch to the child session',
++      input: { hint: '[--through-turn N]' },
++      handler: async ({ rawInput }) => { await fork.fork(rawInput); return { kind: 'success' } },
++    })
++    commandCtx.commands.register({
+       name: 'resume',
+@@ -1405,2 +1418,9 @@
+   const runCommand = (text: string): void => {
++    // A navigation fork must not append command/run or command/done to its
++    // source (nor inherit an unfinished command). Keep registry discovery.
++    const parsed = parseCommand(text)
++    if (parsed?.name === 'fork') {
++      void fork.fork(parsed.rawInput)
++      return
++    }
+     const controller = new AbortController()
+@@ -1549,1 +1569,5 @@
++    if (fork.inFlight) {
++      appendNotice('A session fork is already in progress.', 'warning')
++      return
++    }
+     const restoreSubmittedInput = (): void => {
+@@ -1780,1 +1800,4 @@
+-  rebuildTranscript(true)
++  rebuildTranscript(true)
++  if (agent.session.header.parentSession !== undefined) {
++    appendNotice(`Fork of ${agent.session.header.parentSession}`, 'info')
++  }

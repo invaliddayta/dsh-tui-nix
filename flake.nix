@@ -74,6 +74,20 @@
               DSH_LAUNCHER_SOURCE=${./nix} node --test ${./tests/launcher.test.mjs}
               touch "$out"
             '';
+        fork =
+          nixpkgs.legacyPackages.${system}.runCommand "tui-fork-check"
+            {
+              nativeBuildInputs = with nixpkgs.legacyPackages.${system}; [
+                nodejs-slim_24
+                expect
+              ];
+            }
+            ''
+              mkdir -p "$TMPDIR/fork-test"
+              expect ${./nix/fork-smoke.exp} node ${./tests/fork-fixture.mjs} \
+                ${self.packages.${system}.default} "$TMPDIR/fork-test"
+              touch "$out"
+            '';
         smoke-test =
           nixpkgs.legacyPackages.${system}.runCommand "tui-smoke-test-check"
             {

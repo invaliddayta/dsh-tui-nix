@@ -23,6 +23,31 @@ Inside the TUI, `/model` opens the model selector and `/model <provider>/<model-
 
 **Ctrl+T** at the chat prompt cycles the current model's advertised reasoning efforts, without reopening `/model` or submitting your draft. The chosen effort appears beside the model name and applies to new steps, not an already-running request. For Grok 4.6 the cycle is Default, Low, Medium, High, Xhigh, then Default again. Default leaves the effort unspecified; it does not disable reasoning. Inside `/model`, Ctrl+T previews the highlighted model's effort and Enter applies it. Kitty key-release and repeat events are ignored, so a press advances once. Accepted model and effort selections also become the global startup default; previews and cancelled selections do not. Ctrl+R only shows or hides reasoning text.
 
+## Fork a conversation
+
+Use `/fork` to branch the current conversation and switch into the new session.
+The source history stays unchanged; the child gets its own session ID, appears in
+`/resume`, and displays its parent session when opened. No model request is made.
+
+```text
+/fork
+/fork --through-turn 3
+```
+
+The default keeps the latest closed conversation prefix, including between-turn
+settings. `--through-turn N` keeps history through that turn's end and excludes
+later events. `N` is the logged turn number, not a message index; closed cancelled
+or failed turns count too. A trailing unfinished turn is excluded by default.
+Finish or cancel active work first. Empty conversations and missing/open explicit
+turns are refused without creating a child.
+
+Forking copies conversation history, **not project files**: both sessions use the
+same workspace. The selected prefix determines inherited context and settings.
+This is a Pi-TUI command, not a subagent tool, a Git worktree, or a merge feature.
+It requires session persistence and the same in-place host support as `/resume`.
+The child is written, flushed and closed before switching; if switching fails
+before host teardown, the TUI reports its ID for recovery through `/resume`.
+
 ## Other Providers
 
 The bundled [`@deepseek-ai/dsh-llm-pi-ai`](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/packages/llm/llm-pi-ai/README.md) adapter supports Pi's provider catalog and custom OpenAI-compatible endpoints. It starts dormant: only providers you configure add models to the picker. There is no separate plugin installation or background gateway to run.
@@ -236,6 +261,14 @@ The distribution owns packaging and default composition, not alternate implement
 `nix/providers.nix` separately pins the MIT-licensed wizard from [ccch1mneyyy/dsh-TUI](https://github.com/ccch1mneyyy/dsh-TUI/tree/9639f69b4cb2c3907844160094515e3970b55c8b). The build copies its React-free wizard and helpers and extracts its provider-host method by TypeScript syntax. It does not build or install that project's UI or dependencies. Local code bridges private Pi-TUI dialogs and Harness's native `authorization` service; no separate `dsh-auth` plugin or second OAuth store is needed. A small widget export shares our existing bundled Pi-TUI implementation rather than bundling another copy.
 
 Provider TypeScript sources and the wizard verification script stay in build-time check material, outside the installed runtime package. The runtime retains compiled JavaScript, type declarations, and licenses; the checks still type-check and exercise the extracted sources. The build-only virtual-address cap is restored to the caller's original limit before runtime install checks; Node heap and worker limits remain enforced.
+
+`nix/tui-fork.patch` wires the distribution-local `/fork` controller and small
+session helper into the pinned TUI. It uses native `sessions.fork()` plus the
+public persistence handle API, not JSONL file rewriting. The TUI intercepts this
+navigation command before normal command logging so the source stays unchanged.
+Remove this patch and its copied helpers when upstream offers equivalent session
+branching; fork regressions cover packed logs, durability, failure handling, and
+terminal handoff.
 
 `nix/tui-command-history.patch` honors Harness's `recordInput: false` at the editor boundary, so rejected `/provider` arguments are not retained in prompt history. Remove it when the frontend honors that flag itself. Tests submit commands through the editor and verify both history and session events, rather than testing only direct command-service calls.
 

@@ -1,0 +1,105 @@
+# expect fork-smoke.exp NODE FIXTURE_MODULE PACKAGE TEST_ROOT
+set timeout 30
+if {[llength $argv] != 4} {
+    puts stderr "usage: fork-smoke.exp NODE FIXTURE_MODULE PACKAGE TEST_ROOT"
+    exit 1
+}
+lassign $argv node fixture package root
+set root [file normalize $root]
+set runtime [file join $package libexec dsh]
+set launcher [file join $package bin dsh-tui]
+
+proc fail {message} {
+    puts stderr $message
+    exit 1
+}
+
+if {[catch {exec $node $fixture $runtime seed $root} result]} { fail $result }
+puts $result
+set env(HOME) [file join $root home]
+set env(DSH_HOME) [file join $root dsh]
+set env(DSH_TUI_LANG) en
+set env(TERM) xterm-256color
+set env(DSH_TELEMETRY_DISABLED) 1
+set env(NODE_OPTIONS) "--import=\"[file join $root no-network.mjs]\""
+cd [file join $root workspace]
+
+proc close_tui {} {
+    global spawn_id
+    send "\003"
+    expect {
+        eof {}
+        timeout { fail "TUI did not exit after Ctrl-C" }
+    }
+    set status [wait]
+    if {[lindex $status 2] != 0 || [lindex $status 3] != 0 || [llength $status] > 4} {
+        fail "TUI did not exit cleanly: $status"
+    }
+}
+
+# Refusal must remain in the original process and leave no child artifact.
+spawn sh -c {stty rows 40 cols 120; exec "$@"} sh $launcher --resume main-session-fork-smoke-empty
+expect {
+    -re {main-session-fork-smoke-empty} {}
+    timeout { fail "Empty fixture did not render" }
+    eof { fail "Empty fixture exited before rendering" }
+}
+after 700
+send "/fork"
+after 100
+send "\r"
+expect {
+    -re {no completed turn} {}
+    -re {Fork of} { fail "Empty session unexpectedly forked" }
+    timeout { fail "Empty /fork did not report its refusal" }
+    eof { fail "Empty /fork exited the TUI" }
+}
+close_tui
+
+foreach command {{/fork --through-turn 1} {/fork}} {
+    spawn sh -c {stty rows 40 cols 120; exec "$@"} sh $launcher --resume main-session-fork-smoke-source
+    expect {
+        -re {DSH_FORK_TURN_2_ASSISTANT} {}
+        timeout { fail "Source did not render both fixture turns" }
+        eof { fail "Source exited before rendering" }
+    }
+    after 700
+    send -- $command
+    after 100
+    send "\r"
+    expect {
+        -re {Fork of main-session-fork-smoke-source} {}
+        -re {Fork failed:} { fail "Packaged $command failed instead of handing off" }
+        timeout { fail "Packaged $command did not re-exec into its child" }
+        eof { fail "Packaged $command exited before rendering child lineage" }
+    }
+    # Force a fresh full paint after the lineage handoff, so transcript assertions
+    # cannot accidentally match the old source's pre-exec screen.
+    exec stty rows 41 cols 121 < $spawn_out(slave,name)
+    set childPaint ""
+    expect {
+        -re {DSH_FORK_TURN_1_ASSISTANT} { append childPaint $expect_out(buffer) }
+        timeout { fail "Child did not repaint its inherited first turn" }
+        eof { fail "Child exited before transcript verification" }
+    }
+    if {$command eq "/fork"} {
+        expect {
+            -re {DSH_FORK_TURN_2_ASSISTANT} { append childPaint $expect_out(buffer) }
+            timeout { fail "Default fork lost the latest completed turn" }
+            eof { fail "Default child exited before showing turn two" }
+        }
+    } else {
+        set oldTimeout $::timeout
+        set ::timeout 1
+        expect {
+            -re {DSH_FORK_TURN_2_(USER|ASSISTANT)} { fail "Earlier fork rendered excluded turn two" }
+            timeout {}
+            eof { fail "Earlier child exited during transcript verification" }
+        }
+        set ::timeout $oldTimeout
+        if {[string match *DSH_FORK_TURN_2_* $childPaint]} { fail "Earlier child repaint contains excluded turn two" }
+    }
+    close_tui
+}
+if {[catch {exec $node $fixture $runtime verify $root} result]} { fail $result }
+puts $result
