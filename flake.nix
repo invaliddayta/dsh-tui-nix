@@ -1,5 +1,5 @@
 {
-  description = "Slim, TUI-first DeepSeek Harness distribution";
+  description = "Opinionated, TUI-first DeepSeek Harness distribution";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/3ed67ec0a4d3c7ab4ae1f04f8ee8df07bfa506a2";
@@ -72,6 +72,17 @@
             }
             ''
               DSH_LAUNCHER_SOURCE=${./nix} node --test ${./tests/launcher.test.mjs}
+              touch "$out"
+            '';
+        images =
+          nixpkgs.legacyPackages.${system}.runCommand "tui-images-check"
+            {
+              nativeBuildInputs = [ nixpkgs.legacyPackages.${system}.nodejs-slim_24 ];
+            }
+            ''
+              export HOME="$TMPDIR/home"
+              mkdir -p "$HOME"
+              node ${./tests/images.mjs} ${self.packages.${system}.default}/libexec/dsh
               touch "$out"
             '';
         fork =

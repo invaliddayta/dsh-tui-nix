@@ -1,8 +1,8 @@
 # DeepSeek Harness TUI
 
-Nix package for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) terminal UI ([dsh-tui](https://github.com/dsh-tui/dsh-tui)), built from pinned source revisions. Includes the direct DeepSeek provider, the upstream Pi multi-provider plugin, and in-app provider setup. The frontend remains Pi-TUI: no React, React reconciler, Harness Web app, browser client packages, telemetry exporter, or browser RPC gateway.
+An opinionated, TUI-first distribution of [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), packaged with Nix and the [dsh-tui](https://github.com/dsh-tui/dsh-tui) frontend from pinned source revisions. Includes the direct DeepSeek provider, the upstream Pi multi-provider plugin, and in-app provider setup. The frontend remains Pi-TUI: no React, React reconciler, Harness Web app, browser client packages, telemetry exporter, or browser RPC gateway.
 
-This is an independent packaging project. DeepSeek Harness and dsh-tui are owned and maintained by their upstream projects.
+This is an independent, personal Harness distribution, evolving incrementally with custom tooling and defaults—not a general-purpose packaging mirror. DeepSeek Harness and dsh-tui remain owned and maintained by their upstream projects.
 
 ## Run
 
@@ -22,6 +22,34 @@ use DSH's native `/provider` sign-in without installing OpenCode.
 Inside the TUI, `/model` opens the model selector and `/model <provider>/<model-id>` switches directly. An unambiguous model ID also works without the provider prefix. The direct DeepSeek provider (`deepseek-official`) offers `deepseek-v4-flash`, `deepseek-v4-pro`, and `deepseek-v4-flash-vision-exp`.
 
 **Ctrl+T** at the chat prompt cycles the current model's advertised reasoning efforts, without reopening `/model` or submitting your draft. The chosen effort appears beside the model name and applies to new steps, not an already-running request. For Grok 4.6 the cycle is Default, Low, Medium, High, Xhigh, then Default again. Default leaves the effort unspecified; it does not disable reasoning. Inside `/model`, Ctrl+T previews the highlighted model's effort and Enter applies it. Kitty key-release and repeat events are ignored, so a press advances once. Accepted model and effort selections also become the global startup default; previews and cancelled selections do not. Ctrl+R only shows or hides reasoning text.
+
+## Read images
+
+Image reading uses Harness's existing `read_image` tool and local attachment
+store, included in the default profile. No extra plugin or separate Harness
+installation is needed.
+
+1. Select an image-capable model with `/model`, for example
+   `/model deepseek-official/deepseek-v4-flash-vision-exp` (requires DeepSeek
+   credentials) or `/model zai/glm-5.3-flash` (requires Z.ai credentials).
+2. Save the image in the workspace and ask, for example:
+   `Use read_image on ./screenshot.png and explain the error shown.`
+
+PNG, JPEG, WebP and GIF are supported, including extensionless files detected by
+content. Harness validates and downscales images before sending them to the
+model. Filesystem sandbox permissions still apply. The default
+`deepseek-v4-pro` is text-only in the pinned catalog: switch models before asking
+it to inspect an image. This workflow reads local files; it does not promise
+clipboard image paste or inline terminal image rendering.
+
+For custom Pi-compatible routes, unknown models default to text-only. Declare
+`input: ["text", "image"]` on the model entry in your `llm-pi-ai` settings only
+when the server supports it; the provider wizard does not currently configure
+that capability for unknown models. Do not infer image support from a model name.
+
+`checks.<system>.images` exercises the installed image tooling without API keys
+or network access. It verifies local image handling, not a live provider's visual
+understanding.
 
 ## Fork a conversation
 
@@ -254,7 +282,7 @@ callers, and the documented profile through the actual loader and HTTP boundary.
 
 `nix/build-runtime.mjs` uses that single projected workspace list for TypeScript and the upstream host bundler. `nix/harness-host-build.patch` makes the shared upstream preset emit the selected packages' Node halves during the host pass; there is no separate fallback bundler or browser pass. Remove this patch when upstream supports a Node-only build of these packages. Installation checks require the selected Node entry points and reject their browser bundles.
 
-The distribution owns packaging and default composition, not alternate implementations of Harness services. Keep source pins as a tested pair; remove compatibility patches only after session, provider, and terminal regressions pass. The current frontend still targets older Harness APIs, so upgrading Harness alone is not a compatibility cleanup. Keep the session adaptations until a compatible frontend is available, and test persisted-session migrations separately from packaging refactors.
+The distribution owns its packaging, default composition, and opinionated tooling. Reuse upstream Harness services where they fit instead of duplicating them. Keep source pins as a tested pair; remove compatibility patches only after session, provider, and terminal regressions pass. The current frontend still targets older Harness APIs, so upgrading Harness alone is not a compatibility cleanup. Keep the session adaptations until a compatible frontend is available, and test persisted-session migrations separately from packaging refactors.
 
 `nix/package.nix` also pins two upstream Harness backports: [`69a0441`](https://github.com/deepseek-ai/deepseek-harness/commit/69a0441c34019fbb416db35eec0a48470391ddd7) upgrades Pi-AI and its dependency lock to 0.85.1, and [`7bab91d`](https://github.com/deepseek-ai/deepseek-harness/commit/7bab91d247e4a7a2e84c68e1883359f5dc718e6a) preserves Anthropic replay identity. They are hash-checked patches limited to the adapter and dependency files, not locally maintained model tables. Remove these backports when the Harness input includes them. Catalog updates must keep the SDK and adapter compatible; the build runs the upstream catalog/compatibility/replay tests and checks every nonempty provider catalog through the installed model-list and discovery services.
 
