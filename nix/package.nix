@@ -48,8 +48,8 @@ let
       ulimit -S -v 10485760
     fi
   '';
-  # Backport the upstream Pi-AI update without unrelated Harness/session changes.
-  # Remove these when the Harness pin includes both commits.
+  # Backport upstream Pi-AI updates without unrelated Harness/session changes.
+  # Remove each when the Harness pin includes it.
   piAiPatches =
     map
       (
@@ -73,7 +73,13 @@ let
           rev = "7bab91d247e4a7a2e84c68e1883359f5dc718e6a";
           hash = "sha256-ACJJtmU7ecHW7y+jUi0bhjlpovjZ0mkcD6INTF/WxHQ=";
         }
-      ];
+      ]
+    ++ [
+      # Pi-AI 0.86.1 model-catalog refresh (145 new model ids across providers,
+      # including the new Meta and Radius catalogs), carried as a local backport
+      # until upstream pins 0.86.x. Same file scope as the fetched backports.
+      ./pi-ai-0.86.1-upgrade.patch
+    ];
   projectRuntime = ''
     ${lib.concatMapStringsSep "\n" (patch: "patch -p1 --fuzz=0 < ${patch}") piAiPatches}
     # Selected workspaces need their Node half, never their browser bundle.
@@ -146,7 +152,12 @@ let
   };
 
   credentialsOpencode = import ./credentials-opencode.nix {
-    inherit lib stdenvNoCC nodejs-slim_24 typescript;
+    inherit
+      lib
+      stdenvNoCC
+      nodejs-slim_24
+      typescript
+      ;
   };
 
   pnpmDeps = fetchPnpmDeps {
@@ -159,7 +170,7 @@ let
       "@deepseek-ai/dsh-typert-generator..."
     ];
     fetcherVersion = 4;
-    hash = "sha256-S/3+HQZslFySRdiGAFMO2/NBxxHMNGlrMh1f2sYyh+0=";
+    hash = "sha256-zhc5i4EfvxQ+QMbIIL2CvGyoghOuq/qLcb8Kz+n4WEo=";
     env.NODE_OPTIONS = "--max-old-space-size=2048";
     # pnpm workers each reserve a V8 code range under our address-space limit.
     env.PNPM_MAX_WORKERS = "1";
@@ -351,7 +362,7 @@ stdenv.mkDerivation (finalAttrs: {
     test ! -e "$out/libexec/dsh/node_modules/@deepseek-harness-tui/dsh-auth"
     node ${../tests/provider-authorization.mjs} "$out/libexec/dsh"
     node ${../tests/opencode-credentials.mjs} "$out/libexec/dsh"
-    node ${../tests/opencode-profile.mjs} "$out/libexec/dsh" ${../README.md}
+    node ${../tests/opencode-profile.mjs} "$out/libexec/dsh" ${../docs/guide.md}
     node ${../tests/credential-ownership.mjs} "$out/libexec/dsh"
     # Provider SDKs bring the OTel API and HTTP libraries, but no exporter.
     for telemetryPackage in "$out/libexec/dsh/node_modules/@opentelemetry/"{sdk-*,exporter-*}; do
@@ -427,7 +438,14 @@ stdenv.mkDerivation (finalAttrs: {
     runHook postInstallCheck
   '';
 
-  passthru = { inherit pnpmDeps tui providers credentialsOpencode; };
+  passthru = {
+    inherit
+      pnpmDeps
+      tui
+      providers
+      credentialsOpencode
+      ;
+  };
 
   meta = {
     description = "Slim, source-built DeepSeek Harness terminal UI";

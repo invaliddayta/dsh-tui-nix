@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-labelledby="title desc">
+  <title id="title">DeepSeek Harness TUI</title>
+  <desc id="desc">Terminal native. Less baggage. Your own opinions. A minimal terminal-inspired banner.</desc>
+  <rect width="1200" height="300" rx="16" fill="#0c1420"/>
+  <path d="M0 246H1200M0 270H1200M0 294H1200" stroke="#172a3c" stroke-width="1"/>
+  <rect x="48" y="42" width="1104" height="216" rx="10" fill="#101e2e" stroke="#294254"/>
+  <path d="M48 80H1152" stroke="#294254"/>
+  <circle cx="70" cy="61" r="4" fill="#63d8c0"/>
+  <circle cx="86" cy="61" r="4" fill="#638096"/>
+  <circle cx="102" cy="61" r="4" fill="#638096"/>
+  <g font-family="ui-monospace, SFMono-Regular, Consolas, monospace">
+    <text x="1128" y="66" fill="#8da7bc" font-size="13" text-anchor="end">dsh-tui / opinionated by design</text>
+    <text x="80" y="146" fill="#63d8c0" font-size="40" font-weight="700">&gt;_</text>
+    <text x="164" y="146" fill="#edf4fa" font-size="40" font-weight="700">DeepSeek Harness TUI</text>
+    <text x="82" y="188" fill="#b0c4d4" font-size="20">Terminal native. Less baggage. Your own opinions.</text>
+    <text x="82" y="227" fill="#63d8c0" font-size="14">LINUX + NIX</text>
+    <text x="252" y="227" fill="#8da7bc" font-size="14">NO WEB APP</text>
+    <text x="416" y="227" fill="#8da7bc" font-size="14">NO REACT</text>
+    <text x="560" y="227" fill="#8da7bc" font-size="14">PINNED SOURCES</text>
+  </g>
+</svg>

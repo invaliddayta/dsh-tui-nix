@@ -1,4 +1,4 @@
-// node tests/opencode-profile.mjs RUNTIME_ROOT README_PATH
+// node tests/opencode-profile.mjs RUNTIME_ROOT GUIDE_PATH
 import assert from 'node:assert/strict'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -7,9 +7,9 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-assert(process.argv[2] && process.argv[3], 'Expected RUNTIME_ROOT and README_PATH')
+assert(process.argv[2] && process.argv[3], 'Expected RUNTIME_ROOT and GUIDE_PATH')
 const runtime = resolve(process.argv[2])
-const readme = await readFile(resolve(process.argv[3]), 'utf8')
+const guide = await readFile(resolve(process.argv[3]), 'utf8')
 const requireRuntime = createRequire(join(runtime, 'package.json'))
 const load = name => import(pathToFileURL(requireRuntime.resolve(name)).href)
 const root = await mkdtemp(join(tmpdir(), 'opencode-profile-'))
@@ -41,9 +41,9 @@ try {
   const { default: LlmRuntime } = await load('@deepseek-ai/dsh-llm')
   const yaml = await load('js-yaml')
   const bridgeName = 'dsh-credentials-opencode'
-  const section = readme.split(/^### OpenCode-Owned Credentials\s*$/m)[1]?.split(/^#{1,3} /m)[0]
+  const section = guide.split(/^### OpenCode-Owned Credentials\s*$/m)[1]?.split(/^#{1,3} /m)[0]
   const example = section?.match(/```yaml\s*\n([\s\S]*?)\n```/)?.[1]
-  assert(example, 'README must contain the OpenCode-Owned Credentials YAML example')
+  assert(example, 'Guide must contain the OpenCode-Owned Credentials YAML example')
   const profileDir = join(root, 'profiles', 'opencode-test')
   initProfile(profileDir, ['@deepseek-ai/dsh-base', '@dsh-tui/dsh-tui'], 'startup')
   const patchPath = join(profileDir, 'cordis.patch.yml')
@@ -72,12 +72,12 @@ try {
   function documentedComposition(patches) {
     const warnings = []
     const dump = renderConfigDump('opencode-test', configPath, [
-      ...layersBeforeDocs, { label: 'README OpenCode example', patches },
+      ...layersBeforeDocs, { label: 'Guide OpenCode example', patches },
     ], warning => warnings.push(warning))
     return { entries: composeEntries([...layersBeforeDocs.map(layer => layer.patches), patches]), warnings, dump }
   }
   function assertDocumentedProfile(composition) {
-    assert.deepEqual(composition.warnings, [], 'README patch must not be skipped by real composition')
+    assert.deepEqual(composition.warnings, [], 'Guide patch must not be skipped by real composition')
     const entries = flatten(composition.entries)
     assert.equal(entries.find(entry => entry.id === 'credentials')?.disabled, true, 'Original credentials entry must be disabled')
     const bridges = entries.filter(entry => entry.name === bridgeName && !entry.disabled)
@@ -90,7 +90,7 @@ try {
   const documentedBridge = profile.patches.flatMap(patch => patch.insert ?? []).find(entry => entry.name === bridgeName)
   const broken = documentedComposition([{ id: 'credentials', name: bridgeName, config: documentedBridge?.config ?? {} }])
   assert.match(broken.warnings.join('\n'), /name mismatch.*credentials.*skipping/)
-  assert.throws(() => assertDocumentedProfile(broken), /README patch must not be skipped/)
+  assert.throws(() => assertDocumentedProfile(broken), /Guide patch must not be skipped/)
   console.log('PASS: old name-as-replacement example fails the real composition regression')
 
   const bridge = assertDocumentedProfile(documentedComposition(profile.patches))
@@ -98,7 +98,7 @@ try {
   assert.deepEqual(records[credentialKey('llm-pi-ai', 'qwen-token-plan')], { provider: 'alibaba-token-plan', type: 'api' })
   assert.deepEqual(records[credentialKey('llm-pi-ai', 'kimi-coding')], { provider: 'kimi-for-coding', type: 'api' })
   const piRoute = recordKey => {
-    assert.match(parseCredentialKey(recordKey), /^llm-pi-ai\//, 'README bindings must target the Pi adapter')
+    assert.match(parseCredentialKey(recordKey), /^llm-pi-ai\//, 'Guide bindings must target the Pi adapter')
     return recordKey.slice('llm-pi-ai/'.length)
   }
   assert.equal(refs.DEEPSEEK_API_KEY, 'deepseek')
@@ -159,7 +159,7 @@ try {
     assert.deepEqual(await ctx.credentials.describe(credentialRef(ref)), { configured: true, writable: false, owner: 'OpenCode', source: 'opencode' })
   }
   assert.equal(requests.length, 0, 'Boot and authentication must not make HTTP requests')
-  console.log('PASS: README composes without warnings, disables native credentials and boots the bridge; all documented bindings apply auth')
+  console.log('PASS: Guide composes without warnings, disables native credentials and boots the bridge; all documented bindings apply auth')
 
   for (const [route, id, endpoint, header, prefix] of [
     ['qwen-token-plan', 'deepseek-v4-flash-0731', 'https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions', 'authorization', 'Bearer '],
