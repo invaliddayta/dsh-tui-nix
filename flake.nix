@@ -107,6 +107,15 @@
                 ${self.packages.${system}.default} "$TMPDIR/fork-test"
               touch "$out"
             '';
+        formatting =
+          nixpkgs.legacyPackages.${system}.runCommand "tui-formatting-check"
+            {
+              nativeBuildInputs = [ nixpkgs.legacyPackages.${system}.nixfmt ];
+            }
+            ''
+              nixfmt --check ${./flake.nix} ${./nix}/*.nix
+              touch "$out"
+            '';
         smoke-test =
           nixpkgs.legacyPackages.${system}.runCommand "tui-smoke-test-check"
             {
