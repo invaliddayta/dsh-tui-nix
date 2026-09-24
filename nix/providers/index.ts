@@ -70,9 +70,11 @@ function mountProviderCommand(ctx: Context): void {
             if (await pick('Remove stored sign-in and disable this provider?', [{ label: 'Cancel' }, { label: 'Sign out' }], 'Environment keys and composition-base settings are not removed.') !== 'Sign out') return { kind: 'success' }
             const section = ctx.settings.describe().find(section => section.ns === 'llm-pi-ai')
             const base = section?.base as { providers?: Record<string, unknown> } | undefined
-            if (base?.providers?.[provider] !== undefined) return { kind: 'error', text: 'This provider is enabled by the composition base. Remove that configuration before signing out.' }
+            // Unsetting the user route cannot disable a composition-base route,
+            // but the stored secret is still the user's to remove.
             await ctx.settings.mutate('llm-pi-ai', [{ op: 'unset', path: ['providers', provider] }], section?.revision)
             await ctx.credentials.deleteRecord(entry.key)
+            if (base?.providers?.[provider] !== undefined) return { kind: 'success', text: 'Stored sign-in removed. The provider stays enabled by the composition base.' }
             return { kind: 'success', text: 'Stored sign-in removed and provider disabled. API-key references were left untouched.' }
           }
           const label = await pick('Choose a sign-in method', entry.methods.map(method => ({ label: method.label })))

@@ -22,7 +22,7 @@ export function createDialogs(tui: TuiExtensionService, signal: AbortSignal) {
             invalidate() {},
             handleInput(data: string) {
               if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl('c'))) cancel()
-              else if (data === 'o') open()
+              else if (data === 'o' || data === 'O') open()
               else if (matchesKey(data, Key.pageDown)) offset += 3
               else if (matchesKey(data, Key.pageUp)) offset = Math.max(0, offset - 3)
               host.invalidate()

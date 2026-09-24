@@ -20,8 +20,8 @@ import { HeadlessTerminal } from './headless-terminal.ts'
 let terminal: HeadlessTerminal
 let harness: Awaited<ReturnType<typeof createTuiTestHarness>>
 let root: string
-beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), 'provider-ui-'))
+/** Mount the provider UI; `piAi` is the Pi adapter's composition-base config. */
+async function mount(piAi?: Record<string, unknown>) {
   terminal = new HeadlessTerminal(100, 32)
   harness = await createTuiTestHarness(terminal, vi.fn(), {
     omitInitialLifecycle: true,
@@ -32,11 +32,15 @@ beforeEach(async () => {
       await ctx.plugin(FileSettingsProvider, { path: join(root, 'settings.yaml'), watch: false })
       await ctx.plugin(LocalCredentials, { path: join(root, 'credentials.yaml'), watch: false })
       await ctx.plugin(Authorization)
-      await ctx.plugin(LlmPiAi)
+      await ctx.plugin(LlmPiAi, piAi)
     },
   })
   await harness.ctx.plugin(Providers)
   await terminal.waitForFrame(0)
+}
+beforeEach(async () => {
+  root = await mkdtemp(join(tmpdir(), 'provider-ui-'))
+  await mount()
 })
 afterEach(async () => {
   await disposeTuiTestHarness(harness)
@@ -119,6 +123,34 @@ it('signs into OpenAI with a fabricated API key entirely through private dialogs
   await expect(logout).resolves.toMatchObject({ result: { kind: 'success' } })
   expect(await harness.ctx.credentials.listRecords()).toEqual([])
   expect(harness.ctx.llm.listProviders().map(provider => provider.id)).not.toContain('openai')
+})
+
+it('signs out a native credential while a composition-base route stays enabled', async () => {
+  await disposeTuiTestHarness(harness)
+  await terminal.dispose()
+  await mount({ providers: { openai: {} } })
+  const login = harness.ctx.commands.execute(harness.agent, '/provider', [], new AbortController().signal)
+  await screen('Provider setup'); terminal.send('\r')
+  await screen('Choose a provider'); terminal.send('openai')
+  await screen('> openai'); terminal.send('\r')
+  await screen('Choose a sign-in method'); terminal.send('\r')
+  await screen('Use this sign-in'); terminal.send('\r')
+  await screen('API key')
+  terminal.send('sk-base-route-secret'); terminal.send('\r')
+  await screen('Provider ready')
+  terminal.send('\x1b[B'); terminal.send('\r')
+  await expect(login).resolves.toMatchObject({ result: { kind: 'success' } })
+  expect(await harness.ctx.credentials.listRecords()).toHaveLength(1)
+
+  const logout = harness.ctx.commands.execute(harness.agent, '/provider', [], new AbortController().signal)
+  await screen('Provider setup'); terminal.send('Sign out'); terminal.send('\r')
+  await screen('Choose a provider to sign out'); terminal.send('\r')
+  await screen('Remove stored sign-in'); terminal.send('\x1b[B'); terminal.send('\r')
+  await expect(logout).resolves.toMatchObject({ result: { kind: 'success', text: expect.stringContaining('composition base') } })
+  // The stored secret is gone; the base-configured route itself stays enabled.
+  expect(await harness.ctx.credentials.listRecords()).toEqual([])
+  expect(await readFile(join(root, 'credentials.yaml'), 'utf8')).not.toContain('sk-base-route-secret')
+  expect(harness.ctx.llm.listProviders().map(provider => provider.id)).toContain('openai')
 })
 
 it.each(['Sign in', 'Sign out'])('refuses %s for externally owned credentials before changing settings or starting authorization', async action => {
