@@ -2,146 +2,25 @@
 
 [Back to README](../README.md)
 
-## Prerequisites and operation
+## Getting started
 
-Supported systems: `x86_64-linux`, `aarch64-linux`. You need [Nix](https://nixos.org/download/) with `nix-command` and `flakes` enabled. You can launch without an API key and use `/provider` to sign in. `DEEPSEEK_API_KEY` still configures the default direct DeepSeek route.
+Supported systems are `x86_64-linux` and `aarch64-linux`. You need [Nix](https://nixos.org/download/) with the `nix-command` and `flakes` features enabled.
 
 ```sh
 nix run github:invaliddayta/dsh-tui-nix
 ```
 
-The first run builds from source and takes a while. No pnpm or Node.js installation is required at runtime.
+The first run builds from source and takes a while. The package contains its own Harness runtime, so you don't need Node.js, pnpm or a separate Harness install. You can start without an API key and sign in with `/provider`; `DEEPSEEK_API_KEY` still configures the direct DeepSeek route.
 
-The package includes its own Harness runtime; you do not need a separate DeepSeek
-Harness installation. Reusing another harness's credentials is optional and has
-an [existing-installation prerequisite](#opencode-owned-credentials). Otherwise,
-use DSH's native `/provider` sign-in without installing OpenCode.
+## Models and reasoning effort
 
-Inside the TUI, `/model` opens the model selector and `/model <provider>/<model-id>` switches directly. An unambiguous model ID also works without the provider prefix. The direct DeepSeek provider (`deepseek-official`) offers `deepseek-v4-flash`, `deepseek-v4-pro`, and `deepseek-v4-flash-vision-exp`.
+`/model` opens the model picker. `/model <provider>/<model-id>` switches directly, and the provider prefix can be left out when the model ID is unambiguous. The direct DeepSeek provider (`deepseek-official`) offers `deepseek-v4-flash`, `deepseek-v4-pro` and `deepseek-v4-flash-vision-exp`.
 
-**Ctrl+T** at the chat prompt cycles the current model's advertised reasoning efforts, without reopening `/model` or submitting your draft. The chosen effort appears beside the model name and applies to new steps, not an already-running request. For Grok 4.6 the cycle is Default, Low, Medium, High, Xhigh, then Default again. Default leaves the effort unspecified; it does not disable reasoning. Inside `/model`, Ctrl+T previews the highlighted model's effort and Enter applies it. Kitty key-release and repeat events are ignored, so a press advances once. Accepted model and effort selections also become the global startup default; previews and cancelled selections do not. Ctrl+R only shows or hides reasoning text.
+Ctrl+T at the prompt cycles through the reasoning efforts the current model advertises, without touching your draft. For Grok 4.6 that is Default, Low, Medium, High, Xhigh and back to Default. Default leaves the effort unset; it doesn't turn reasoning off. The effort is shown next to the model name and applies from the next step. Inside `/model`, Ctrl+T previews the effort for the highlighted model and Enter applies it. Ctrl+R only shows or hides reasoning text.
 
-## Read images
+The model and effort you accept in `/model` become the default for new sessions, across all projects that share the same `$DSH_HOME`. They're saved in the `agent-default-model` section of `$DSH_HOME/settings.yaml`. Previews, cancelled picks and invalid commands don't save anything. A resumed session keeps the model its last request used. If several sessions are open, the last successful save wins. If saving fails, the current session still switches and you get a warning.
 
-Image reading uses Harness's existing `read_image` tool and local attachment
-store, included in the default profile. No extra plugin or separate Harness
-installation is needed.
-
-1. Select an image-capable model with `/model`, for example
-   `/model deepseek-official/deepseek-v4-flash-vision-exp` (requires DeepSeek
-   credentials) or `/model zai/glm-5.3-flash` (requires Z.ai credentials).
-2. Save the image in the workspace and ask, for example:
-   `Use read_image on ./screenshot.png and explain the error shown.`
-
-PNG, JPEG, WebP and GIF are supported, including extensionless files detected by
-content. Harness validates and downscales images before sending them to the
-model. Filesystem sandbox permissions still apply. The default
-`deepseek-v4-pro` is text-only in the pinned catalog: switch models before asking
-it to inspect an image. This workflow reads local files; it does not promise
-clipboard image paste or inline terminal image rendering.
-
-For custom Pi-compatible routes, unknown models default to text-only. Declare
-`input: ["text", "image"]` on the model entry in your `llm-pi-ai` settings only
-when the server supports it; the provider wizard does not currently configure
-that capability for unknown models. Do not infer image support from a model name.
-
-`checks.<system>.images` exercises the installed image tooling without API keys
-or network access. It verifies local image handling, not a live provider's visual
-understanding.
-
-## Fork a conversation
-
-Use `/fork` to branch the current conversation and switch into the new session.
-The source history stays unchanged; the child gets its own session ID, appears in
-`/resume`, and displays its parent session when opened. No model request is made.
-
-```text
-/fork
-/fork --through-turn 3
-```
-
-The default keeps the latest closed conversation prefix, including between-turn
-settings. `--through-turn N` keeps history through that turn's end and excludes
-later events. `N` is the logged turn number, not a message index; closed cancelled
-or failed turns count too. A trailing unfinished turn is excluded by default.
-Finish or cancel active work first. Empty conversations and missing/open explicit
-turns are refused without creating a child.
-
-Forking copies conversation history, **not project files**: both sessions use the
-same workspace. The selected prefix determines inherited context and settings.
-This is a Pi-TUI command, not a subagent tool, a Git worktree, or a merge feature.
-It requires session persistence and the same in-place host support as `/resume`.
-The child is written, flushed and closed before switching; if switching fails
-before host teardown, the TUI reports its ID for recovery through `/resume`.
-
-## Other Providers
-
-The bundled [`@deepseek-ai/dsh-llm-pi-ai`](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/packages/llm/llm-pi-ai/README.md) adapter supports Pi's provider catalog and custom OpenAI-compatible endpoints. It starts dormant: only providers you configure add models to the picker. There is no separate plugin installation or background gateway to run.
-
-Run `/provider` inside the TUI:
-
-- **Sign in** lists the installed provider catalog, then the login methods that provider actually supports. Enter an API key in a masked prompt or complete a supported browser/subscription login. On success, the provider is enabled and you can open `/model` immediately.
-- **Configure endpoints** runs the reused upstream wizard to add, edit, or remove settings, discover models, and configure custom OpenAI/Anthropic-compatible servers. An empty key on a new custom endpoint stores the placeholder `local` for Pi's compatible client.
-- **Sign out** removes a native sign-in credential and disables that provider's user-configured route. It leaves environment variables and separate API-key references untouched, and refuses to disable a composition-base route.
-
-Type to filter lists, use arrows and Enter to choose, Space to toggle multiple models, Tab for custom input where offered, and Escape to cancel. Long details and authorization URLs scroll with Page Up/Page Down. Browser login uses the host's `xdg-open`; if it is unavailable, open the displayed URL yourself. Press `O` in the waiting panel to open it again.
-
-The pinned catalog exposes 41 provider routes. OAuth methods are currently advertised for Anthropic, GitHub Copilot, Kimi Coding, OpenAI Codex, OpenRouter, and xAI. Availability is determined by the installed provider implementation, not a promise that every subscription supports third-party login. Live account login requires your account and network access; automated tests do not exercise real OAuth endpoints.
-
-Secrets and login codes are entered through private overlays, not agent tools or chat messages. They are masked even during paste and resize. For native sign-in, Harness owns credential storage and refresh: `$DSH_HOME/.credentials.yaml` (`~/.dsh/.credentials.yaml`), with private file permissions. Settings contain provider configuration and credential references, not the entered secrets. Native sign-in replaces that provider's stored credential and removes its user `apiKeyEnv` override after confirmation; unrelated settings survive. Credentials and settings are separate writes: if enabling a route fails after login, the credential can remain stored for a retry.
-
-### Model Catalog Updates
-
-All built-in Pi providers use the catalog shipped with **Pi-AI 0.86.1**, including Z.ai's `glm-5.3-flash` (image input, 1M context), OpenAI's `gpt-6-astra`, DeepSeek's `deepseek-flash`, and the new Meta and Radius routes. The same catalog feeds `/model` and the provider wizard. After upgrading this package, restart the TUI; no sign-out, credential replacement, or profile reset is needed. For Z.ai, select `/model zai/glm-5.3-flash`.
-
-Built-in discovery is an offline catalog lookup, not a live refresh from each vendor. Reproducible builds pin this catalog together with the matching provider SDK and adapter; future model releases require a package update. Custom endpoints can use the wizard's network discovery or manual model entry. A user-configured `models` list deliberately replaces the built-in selection and stays unchanged on upgrade: reselect models in **Configure endpoints**, or remove only that provider's `models` field to follow the full bundled catalog. Account and subscription access still depend on the provider.
-
-### Manual Configuration
-
-Alternatively, add providers to `$DSH_HOME/settings.yaml` (`~/.dsh/settings.yaml` by default), merging with existing settings:
-
-```yaml
-llm-pi-ai:
-  providers:
-    openai:
-      apiKeyEnv: OPENAI_API_KEY
-    anthropic:
-      apiKeyEnv: ANTHROPIC_API_KEY
-    google:
-      apiKeyEnv: GEMINI_API_KEY
-    openrouter:
-      apiKeyEnv: OPENROUTER_API_KEY
-```
-
-These are environment-variable names, not API keys. Set the corresponding keys before launching the TUI; configuring a route alone does not authenticate it. Settings are hot-reloaded. Open `/model` again to see the configured providers, or select a model directly, for example `/model anthropic/claude-sonnet-4-5`. Available models come from the pinned Pi catalog; a provider's `models` list can replace that catalog when you need a newer or smaller selection.
-
-Custom gateways and local servers need an endpoint, protocol, and explicit model list. For example, add this route under the same `llm-pi-ai.providers` mapping:
-
-```yaml
-local:
-  api: openai-completions
-  baseURL: http://127.0.0.1:11434/v1
-  apiKeyEnv: LOCAL_LLM_API_KEY
-  models:
-    - id: your-installed-model
-      contextWindow: 32768
-      maxTokens: 4096
-```
-
-Use the model ID and limits your server actually supports. Pi's OpenAI-compatible client requires a credential even for a keyless local server; set `LOCAL_LLM_API_KEY=local` in that case. Select it with `/model local/your-installed-model`.
-
-Fresh sessions use the last model explicitly selected with `/model` (including an
-accepted picker selection and reasoning effort). It is stored in the existing
-`agent-default-model` section of `$DSH_HOME/settings.yaml`, globally across projects
-and profiles sharing that harness home. A resumed session keeps its last recorded
-request's model; merely resuming or closing it does not change the global preference.
-Concurrent sessions use the last successfully saved explicit selection, not the
-last session to exit. Invalid model commands and cancelled previews do not save.
-If saving fails, the current session still changes and the TUI shows a warning.
-
-Without a saved preference, the profile's configured startup model remains the
-fallback. To configure that fallback and the shared agent default, add these
-overrides to the profile's `cordis.patch.yml` (see below):
+Without a saved choice, the profile's startup model is used. To change that fallback, add this to your profile's `cordis.patch.yml` (see [Profile](#profile)):
 
 ```yaml
 - id: agent-default-model
@@ -157,36 +36,110 @@ overrides to the profile's `cordis.patch.yml` (see below):
         cwd: !!js process.cwd()
 ```
 
-A saved `agent-default-model` user setting takes precedence over these fallback
-values; remove only that section from `settings.yaml` to return to the configured
-fallback. The provider must also be configured (in-app sign-in does this automatically).
-Remembering a model does not configure its credentials or silently switch to a
-different provider if it becomes unavailable; use `/provider` or `/model` to resolve
-that explicitly. DeepSeek-backed Web search still needs `DEEPSEEK_API_KEY`; selecting
-another chat provider does not replace that tool's backend.
+A saved choice in `settings.yaml` takes precedence; delete that section to go back to the fallback. The provider still has to be configured, and an unavailable remembered model is never silently swapped for another one.
 
-### OpenCode-Owned Credentials
+## Images
 
-The optional [`dsh-credentials-opencode`](../packages/credentials-opencode/README.md)
-plugin reuses OpenCode's API keys and compatible OAuth grants without copying them
-into Harness. It is a separate package with no TUI dependencies, bundled but not
-enabled by default. It maps full Harness credential-record addresses to OpenCode
-provider IDs.
+Pick a model that accepts images first, for example `/model deepseek-official/deepseek-v4-flash-vision-exp` (DeepSeek credentials) or `/model zai/glm-5.3-flash` (Z.ai credentials). The default `deepseek-v4-pro` is text-only.
 
-**Prerequisite: your credential-owning harness must already be set up.** This
-bridge currently supports **OpenCode only**, not arbitrary preferred harnesses.
-Install/configure OpenCode and sign in to the providers you want to reuse before
-enabling the bridge. The OpenCode credential store must be accessible to the user
-running DSH on that machine. Installing this package does not install OpenCode,
-create its credentials, import its provider settings, or synchronize credentials
-from another computer.
+| Input | Result |
+| --- | --- |
+| Ctrl+V | Pastes the clipboard image using `wl-paste` (Wayland) or `xclip` (X11). Both are bundled, but versions on your `PATH` are used first. A text clipboard pastes as text. |
+| Drop a file on the terminal | A paste that consists only of existing image paths (quoted, escaped or `file://`) is attached instead of inserted. |
+| `/image <path>` | Attaches one file. Relative paths are resolved from the session directory. |
 
-OpenCode does not need to be running while DSH reads existing credentials, but you
-still need access to it for sign-in and OAuth refresh. DSH does not invoke its CLI
-or refresh externally owned grants automatically. Without an existing OpenCode
-setup, leave this bridge disabled and use native `/provider` sign-in instead.
+Each image shows up in the prompt as a placeholder like `[image #1 (1920×1080)]`. Write around it and press Enter; text and images reach the model in the order you wrote them. Deleting the placeholder removes the image.
 
-After those prerequisites are met, add the following profile patch:
+Before sending, the TUI checks the selected model. If it only accepts text, the message is refused and your draft is restored. Harness validates, downscales and stores accepted images before the request goes out. Messages with images are left out of prompt history, since a recalled placeholder would have no image behind it. In the transcript, images appear as labels such as `[image screenshot.png 1920×1080]`; they aren't rendered inline.
+
+The agent can also open image files itself with the `read_image` tool, for example: `Use read_image on ./screenshot.png and explain the error shown.` PNG, JPEG, WebP and GIF are supported, including files without an extension. Sandbox permissions apply.
+
+For custom Pi-compatible endpoints, unknown models are treated as text-only. Add `input: ["text", "image"]` to the model entry in your `llm-pi-ai` settings only if the server really accepts images; the provider wizard doesn't set this.
+
+## Resume a conversation
+
+`/resume` lists saved sessions from the current workspace; Tab shows all workspaces. Picking one restarts the TUI in that session's workspace. Rows appear as their titles load, and a session whose log can't be read shows up as a disabled "Unreadable session" row. Only the session you pick is fully loaded and checked, and its model route must still be available.
+
+Titles are cached in `$DSH_HOME/tui/resume-titles.json`, keyed by each log's revision, so an unchanged session is never read again just for its title. The file is only readable by you and safe to delete. Set `DSH_TUI_RESUME_TITLE_CACHE=off` to disable it, or to a file path to move it.
+
+## Fork a conversation
+
+`/fork` copies the current conversation into a new session and switches to it. The original stays as it was. The new session gets its own ID, shows up in `/resume`, and shows its parent when opened. No model request is made.
+
+```text
+/fork
+/fork --through-turn 3
+```
+
+By default the fork includes everything up to the last finished turn, along with settings changed between turns. `--through-turn N` stops after turn `N`. `N` is the turn number in the log, not a message index, and cancelled or failed turns count. An unfinished turn at the end is never included. Finish or cancel running work before forking. Empty conversations and turn numbers that don't exist or haven't finished are refused.
+
+Only the conversation is copied. Both sessions work in the same directory on the same files. `/fork` needs session persistence and the same host support as `/resume`. If switching fails after the new session was written, the TUI prints its ID so you can open it with `/resume`.
+
+## Providers
+
+The bundled [`@deepseek-ai/dsh-llm-pi-ai`](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/packages/llm/llm-pi-ai/README.md) adapter gives access to Pi's provider catalog and to custom OpenAI-compatible endpoints. Only providers you configure add models to the picker.
+
+`/provider` has three options:
+
+- **Sign in** lists the providers and the login methods each one supports. Enter an API key in a masked prompt or complete a browser login. The provider is enabled right away.
+- **Configure endpoints** runs the provider wizard from [ccch1mneyyy/dsh-TUI](https://github.com/ccch1mneyyy/dsh-TUI) to add, edit or remove providers, discover models, and set up custom OpenAI- or Anthropic-compatible servers. Leaving the key empty for a new custom endpoint stores the placeholder `local`.
+- **Sign out** deletes the stored credential and disables the route you configured. Environment variables and API key references are left alone. If your profile patch enables the route, it stays enabled.
+
+In these dialogs, type to filter, use the arrow keys and Enter to choose, Space to toggle models, Tab for custom input where offered, and Escape to cancel. Page Up and Page Down scroll long text. Browser login opens the URL with `xdg-open`; if that fails, open it yourself. Press `o` in the waiting panel to open it again.
+
+The pinned catalog (Pi-AI 0.86.1) has 41 provider routes. Browser login is offered for Anthropic, GitHub Copilot, Kimi Coding, Meta, OpenAI Codex, OpenRouter, Radius and xAI. Whether your subscription allows logins from third-party tools is up to the provider.
+
+Keys and login codes go through private dialogs, never through the chat or agent tools, and stay masked while pasting or resizing. Harness stores them in `$DSH_HOME/.credentials.yaml` with owner-only permissions and handles refreshing them. `settings.yaml` only holds provider settings and references to credentials. Signing in again replaces the stored credential for that provider and, after asking, removes its `apiKeyEnv` override. The credential and the settings are written separately, so if enabling the provider fails after a login, the credential stays saved for the next attempt.
+
+### Model catalog
+
+Built-in providers use the catalog shipped with Pi-AI 0.86.1. It includes Z.ai's `glm-5.3-flash` (image input, 1M context), OpenAI's `gpt-6-astra`, DeepSeek's `deepseek-flash`, and the Meta and Radius routes. `/model` and the wizard use the same catalog. After updating the package, restart the TUI; you don't have to sign in again or reset your profile.
+
+The catalog is pinned at build time, so new models arrive with package updates. For custom endpoints the wizard can discover models over the network, or you can list them by hand. A `models` list you set for a provider replaces the built-in selection and survives updates. To follow the bundled catalog again, remove that provider's `models` field or reselect models in **Configure endpoints**.
+
+### Manual configuration
+
+You can also add providers to `$DSH_HOME/settings.yaml` (default `~/.dsh/settings.yaml`):
+
+```yaml
+llm-pi-ai:
+  providers:
+    openai:
+      apiKeyEnv: OPENAI_API_KEY
+    anthropic:
+      apiKeyEnv: ANTHROPIC_API_KEY
+    google:
+      apiKeyEnv: GEMINI_API_KEY
+    openrouter:
+      apiKeyEnv: OPENROUTER_API_KEY
+```
+
+The values are names of environment variables, not keys, so set those variables before starting the TUI. Settings reload automatically; open `/model` again or switch directly, for example `/model anthropic/claude-sonnet-4-5`.
+
+A local server or custom gateway needs an endpoint, a protocol and a model list. Add it under the same `providers` key:
+
+```yaml
+local:
+  api: openai-completions
+  baseURL: http://127.0.0.1:11434/v1
+  apiKeyEnv: LOCAL_LLM_API_KEY
+  models:
+    - id: your-installed-model
+      contextWindow: 32768
+      maxTokens: 4096
+```
+
+Use the model ID and limits your server supports. Pi's OpenAI-compatible client wants a key even when the server doesn't, so set `LOCAL_LLM_API_KEY=local`. Then select `/model local/your-installed-model`.
+
+The web search tool always uses DeepSeek and needs `DEEPSEEK_API_KEY`, whichever model you chat with.
+
+### OpenCode credentials
+
+The optional [`dsh-credentials-opencode`](../packages/credentials-opencode/README.md) plugin lets Harness use the API keys and logins OpenCode already has, without copying them. It's bundled but disabled by default.
+
+It only works with OpenCode, and OpenCode has to be installed and signed in to the providers you want on the same machine and user account. The plugin doesn't install OpenCode or create, import or sync credentials. OpenCode doesn't need to be running, but you still use it to sign in and to refresh logins. If you don't use OpenCode, use `/provider` instead.
+
+To enable it, add this to your profile patch:
 
 ```yaml
 - id: credentials
@@ -205,117 +158,95 @@ After those prerequisites are met, add the following profile patch:
           DEEPSEEK_API_KEY: deepseek
 ```
 
-The original entry must be disabled and the bridge inserted under a new ID.
-In loader patches, `name` is a match guard, not a replacement field: changing
-the existing `credentials` entry's name skips the entire patch. Restart DSH after
-changing the credential service composition.
+The stock `credentials` entry has to be disabled and the plugin inserted under a new ID. Changing the `name` of the existing entry doesn't work: in loader patches `name` only guards the match, so the whole patch would be skipped. Restart after changing it.
 
-Enable the corresponding routes in `settings.yaml` as usual, without `apiKeyEnv`
-for record-backed routes. The optional `refs` mapping also supplies the direct
-DeepSeek provider and its Web search tool. Explicit process environment values
-still take precedence for references. Unbound native credentials work normally.
+Then enable the providers in `settings.yaml` as usual, without `apiKeyEnv` for the ones listed under `records`. The `refs` entry also supplies the direct DeepSeek provider and web search. A variable set in the environment still takes precedence. Credentials that aren't mapped keep working normally.
 
-The bridge reads `$XDG_DATA_HOME/opencode/auth.json` (normally
-`~/.local/share/opencode/auth.json`) on each operation; `authPath` overrides this
-location. The file must belong to the current user and have owner-only permissions.
-Bound records remain read-only even after an OpenCode sign-out, so stale Harness
-credentials cannot silently take over. Only explicitly bound providers are read.
+The plugin reads `$XDG_DATA_HOME/opencode/auth.json` (usually `~/.local/share/opencode/auth.json`) on every access; set `authPath` to use another file. The file must belong to you and be readable only by you. Only the mapped providers are read. Mapped entries are read-only: DSH won't refresh, replace or sign out of them, and never writes to OpenCode's file, so it can't invalidate OpenCode's tokens. When a login expires (Pi refreshes five minutes before expiry), sign in again in OpenCode and retry. OpenCode's plugins, model aliases and request options aren't imported.
 
-The provider UI shows the credential owner and safe per-provider diagnostics for
-missing, invalid, expired, or unreadable credentials. A broken binding does not
-hide healthy providers. Request-time reads still fail closed; enumeration never
-falls back to stale native records for externally owned addresses.
+`/provider` shows which credentials OpenCode owns and why one isn't usable (missing, invalid, expired or unreadable). A broken mapping doesn't hide the other providers, and requests never fall back to an old credential stored by Harness.
 
-To migrate the earlier distribution-local bridge, change the plugin name from
-`@dsh-tui/providers/lib/opencode-credentials.js` to `dsh-credentials-opencode` and
-prefix each `records` key with `llm-pi-ai/`. Leave `refs` and model settings alone.
-There is no credential-file migration or token copying.
+Matching names don't mean matching endpoints. Pi's `zai` provider points at the Coding Plan URL, while OpenCode's `zai` is the standard API. Only map a key after checking that endpoint and protocol match.
 
-**OpenCode owns sign-in and OAuth refresh.** DSH refuses token-refresh callbacks,
-credential replacement, and sign-out for these bindings; it never writes to the
-OpenCode store or invokes a refresh that could invalidate OpenCode's token.
-Refresh/sign in through OpenCode and retry when an OAuth grant expires (Pi requests
-refresh within five minutes of expiry). Unexpired OpenAI Codex, Anthropic, and xAI
-grants have compatible payloads, but account access and provider-specific request
-policies still apply. OpenCode plugins, model aliases, and request options are not
-automatically imported.
-
-Provider names alone do not guarantee endpoint equivalence: Pi's `zai` catalog
-defaults to the Coding Plan URL, unlike OpenCode's standard `zai` route. Bind keys
-only after matching endpoint and protocol; keep standard and subscription routes
-separate. This bridge is opt-in and does not change the packaged default profile.
+If you used the earlier bridge that shipped inside this package, change the plugin name from `@dsh-tui/providers/lib/opencode-credentials.js` to `dsh-credentials-opencode` and add the `llm-pi-ai/` prefix to each `records` key. Nothing else changes.
 
 ## Profile
 
-The launcher manages `$DSH_HOME/profiles/deepseek-harness-tui` (`~/.dsh/profiles/deepseek-harness-tui` if `DSH_HOME` is unset). Edit `cordis.patch.yml` in that directory to override the packaged profile.
+The launcher manages the profile in `$DSH_HOME/profiles/deepseek-harness-tui` (`~/.dsh/profiles/deepseek-harness-tui` by default). Put your changes in `cordis.patch.yml` there.
 
-After a package update, the launcher warns if its managed profile files are stale. To refresh them while keeping your `cordis.patch.yml`:
+After a package update the launcher warns if its own profile files are out of date. To refresh them without touching your `cordis.patch.yml`:
 
 ```sh
 DSH_TUI_RESET_PROFILE=1 nix run github:invaliddayta/dsh-tui-nix
 ```
 
-The reset refuses to touch a profile that was not created by this package.
+The reset refuses to touch a profile this package didn't create.
 
-## Scope
+## What's included
 
-Included: Pi-TUI terminal UI, native in-app API-key/OAuth authorization, upstream provider-settings wizard, optional read-only OpenCode credential plugin, direct DeepSeek provider, Pi multi-provider adapter and its provider SDK dependencies, image-aware local coding tools, sandbox launchers, session persistence, subagents, workflows, DeepSeek-backed Web search.
+The package contains the Pi-TUI frontend, in-app API key and browser sign-in, the provider wizard, the optional OpenCode credential plugin, the direct DeepSeek provider, the Pi multi-provider adapter, prompt image input, the local coding tools, sandbox launchers, session persistence with `/resume` and `/fork`, subagents, workflows, and DeepSeek web search.
 
-Excluded: Harness Web app and its host packages, browser-only client packages, OpenTelemetry exporter, browser RPC gateway, the generic `dsh` executable. Provider SDK dependencies include HTTP libraries and the OpenTelemetry API; these do not restore the excluded Harness services or a telemetry exporter.
+It leaves out the Harness web app and its host packages, browser-only client packages, the OpenTelemetry exporter and the browser RPC gateway. The Harness CLI is only used internally by `dsh-tui`, so there is no `dsh` command on your `PATH`. Some provider SDKs pull in HTTP libraries and the OpenTelemetry API, but nothing exports telemetry, and session telemetry is off by default.
 
-Session telemetry is disabled by default. The agent can run model-generated commands and modify files; read the upstream [safety notice](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/SAFETY.md) first.
+The agent runs commands and edits files. Read the upstream [safety notice](https://github.com/deepseek-ai/deepseek-harness/blob/76fda729799fe9b3848dbe2c211d4b231032b81e/SAFETY.md).
 
 ## Maintenance
 
-`nix/harness-credential-ownership.patch` is a small, UI-independent Harness change:
-optional credential ownership/diagnostic metadata and a read-only preflight in
-the shared authorization service. It preserves per-key exclusion and cancellation
-while checking metadata. Remove it once the pinned Harness includes these changes.
-`packages/credentials-opencode` is built separately and only depends on Harness
-credential peers; the TUI reads generic metadata, not OpenCode-specific APIs.
-Tests cover malformed-store isolation, non-Pi record scopes, direct authorization
-callers, and the documented profile through the actual loader and HTTP boundary.
+### Pins
 
-`flake.lock` pins Nixpkgs and both upstream source trees. Bumping the DeepSeek Harness input can change the pnpm store hash in `nix/package.nix` and requires a full rebuild on both architectures. When upstream changes its CLI or base bundle, review `CLI_RUNTIME_PACKAGES`, `FORBIDDEN_PACKAGES`, and `OMITTED_BASE_ROWS` in `nix/project-tui-runtime.mjs`.
+`flake.lock` pins Nixpkgs, DeepSeek Harness, dsh-tui and [XMoon/dsh-pi-tui](https://github.com/XMoon/dsh-pi-tui/tree/792c7ec19d1e7c554e67931573e79a7ef72bc617). `nix/providers.nix` pins the wizard from [ccch1mneyyy/dsh-TUI](https://github.com/ccch1mneyyy/dsh-TUI/tree/9639f69b4cb2c3907844160094515e3970b55c8b) by hash.
 
-`nix/build-runtime.mjs` uses that single projected workspace list for TypeScript and the upstream host bundler. `nix/harness-host-build.patch` makes the shared upstream preset emit the selected packages' Node halves during the host pass; there is no separate fallback bundler or browser pass. Remove this patch when upstream supports a Node-only build of these packages. Installation checks require the selected Node entry points and reject their browser bundles.
+Bumping Harness can change the pnpm store hash in `nix/package.nix` and needs a full rebuild on both architectures. If upstream changes its CLI or base bundle, review `CLI_RUNTIME_PACKAGES`, `FORBIDDEN_PACKAGES` and `OMITTED_BASE_ROWS` in `nix/project-tui-runtime.mjs`. `nix/build-runtime.mjs` builds exactly that package list with TypeScript and the upstream host bundler.
 
-The distribution owns its packaging, default composition, and opinionated tooling. Reuse upstream Harness services where they fit instead of duplicating them. Keep source pins as a tested pair; remove compatibility patches only after session, provider, and terminal regressions pass. The current frontend still targets older Harness APIs, so upgrading Harness alone is not a compatibility cleanup. Keep the session adaptations until a compatible frontend is available, and test persisted-session migrations separately from packaging refactors.
+The pinned dsh-tui targets an older Harness API, so Harness and dsh-tui have to be bumped and tested together. Only drop a compatibility patch once the session, provider and terminal tests pass without it, and test session migrations separately from packaging changes.
 
-`nix/package.nix` also pins three upstream Harness backports: [`69a0441`](https://github.com/deepseek-ai/deepseek-harness/commit/69a0441c34019fbb416db35eec0a48470391ddd7) upgrades Pi-AI and its dependency lock to 0.85.1, [`7bab91d`](https://github.com/deepseek-ai/deepseek-harness/commit/7bab91d247e4a7a2e84c68e1883359f5dc718e6a) preserves Anthropic replay identity, and `nix/pi-ai-0.86.1-upgrade.patch` is a locally maintained backport of the Pi-AI 0.86.1 model-catalog refresh (regenerate the `pnpm-lock.yaml` and `pnpm-workspace.yaml` hunks with `pnpm install --lockfile-only` at the repository's pinned `packageManager`, then update the adapter's drift gates in `packages/llm/llm-pi-ai/src/catalog.ts`). They are hash-checked patches limited to the adapter and dependency files, not locally maintained model tables. Remove each backport when the Harness input includes it. Catalog updates must keep the SDK and adapter compatible; the build runs the upstream catalog/compatibility/replay tests and checks every nonempty provider catalog through the installed model-list and discovery services.
+From dsh-pi-tui, the build copies eight modules from `src/image/` unchanged: types, errors, placeholder, draft store, intake, admission, capability and clipboard. None of its UI, its Pi-TUI fork or its dependencies are built. From the wizard project, the build copies the wizard and its helpers and extracts the provider host method by TypeScript syntax; its UI isn't built either. The provider code talks to Harness's own `authorization` service, so there is no second OAuth store, and it reuses the bundled Pi-TUI through a small `provider-widgets` export.
 
-`nix/providers.nix` separately pins the MIT-licensed wizard from [ccch1mneyyy/dsh-TUI](https://github.com/ccch1mneyyy/dsh-TUI/tree/9639f69b4cb2c3907844160094515e3970b55c8b). The build copies its React-free wizard and helpers and extracts its provider-host method by TypeScript syntax. It does not build or install that project's UI or dependencies. Local code bridges private Pi-TUI dialogs and Harness's native `authorization` service; no separate `dsh-auth` plugin or second OAuth store is needed. A small widget export shares our existing bundled Pi-TUI implementation rather than bundling another copy.
+### Carried patches
 
-Provider TypeScript sources and the wizard verification script stay in build-time check material, outside the installed runtime package. The runtime retains compiled JavaScript, type declarations, and licenses; the checks still type-check and exercise the extracted sources. The build-only virtual-address cap is restored to the caller's original limit before runtime install checks; Node heap and worker limits remain enforced.
+Every patch applies with `--fuzz=0`. When a pin bump breaks one, regenerate it against the new source. Delete each patch once upstream has the change.
 
-`nix/tui-fork.patch` wires the distribution-local `/fork` controller and small
-session helper into the pinned TUI. It uses native `sessions.fork()` plus the
-public persistence handle API, not JSONL file rewriting. The TUI intercepts this
-navigation command before normal command logging so the source stays unchanged.
-Remove this patch and its copied helpers when upstream offers equivalent session
-branching; fork regressions cover packed logs, durability, failure handling, and
-terminal handoff.
+| Patch or copied file | Target | Purpose |
+| --- | --- | --- |
+| `harness-host-build.patch` | Harness | Build only the Node half of the selected packages, with no browser bundles |
+| `harness-credential-ownership.patch` | Harness | Credential ownership metadata and a read-only check in the authorization service, used by the OpenCode plugin |
+| `harness-resume-scan.patch` | Harness | Revision on listed sessions and last-activity time on title reads, for the `/resume` cache |
+| `pi-ai-0.86.1-upgrade.patch`, commits [`69a0441`](https://github.com/deepseek-ai/deepseek-harness/commit/69a0441c34019fbb416db35eec0a48470391ddd7) and [`7bab91d`](https://github.com/deepseek-ai/deepseek-harness/commit/7bab91d247e4a7a2e84c68e1883359f5dc718e6a) | Harness | Pi-AI 0.85.1 upgrade, Anthropic replay fix, and the 0.86.1 catalog |
+| `tui-harness-compat.patch`, `substituteInPlace` calls in `tui-source.nix` | dsh-tui | Run on the pinned Harness: moved types, renamed session and command APIs, agent-scoped questions, exit on startup failure |
+| `tui-reasoning-effort.patch` | dsh-tui | Ctrl+T effort cycling |
+| `tui-last-model.patch` | dsh-tui | Remember the last `/model` choice |
+| `tui-command-history.patch` | dsh-tui | Respect `recordInput: false`, so rejected `/provider` arguments stay out of prompt history |
+| `tui-fork.patch`, `chat-fork.ts`, `session-fork.ts` | dsh-tui | `/fork`, built on `sessions.fork()` and the persistence API |
+| `resume.ts` | dsh-tui | `/resume` with the title cache |
+| `tui-image-input.patch`, `image-input.ts` | dsh-tui | Image input around the dsh-pi-tui modules |
+| `provider-widgets.ts`, `providers/` | dsh-tui | `/provider` and the wizard |
 
-`nix/tui-command-history.patch` honors Harness's `recordInput: false` at the editor boundary, so rejected `/provider` arguments are not retained in prompt history. Remove it when the frontend honors that flag itself. Tests submit commands through the editor and verify both history and session events, rather than testing only direct command-service calls.
+Without `harness-resume-scan.patch`, `/resume` still works but can't cache titles, so each listing reads every log once.
 
-Deployment excludes pnpm installation-state files containing wall-clock timestamps and temporary store paths. Use `nix build .#default --rebuild --no-link` to check that a fresh build matches an existing output byte-for-byte.
+To regenerate `pi-ai-0.86.1-upgrade.patch`, update the `pnpm-lock.yaml` and `pnpm-workspace.yaml` hunks with `pnpm install --lockfile-only` using the pinned `packageManager` version, then update the catalog drift checks in `packages/llm/llm-pi-ai/src/catalog.ts`.
+
+### Checks
 
 ```sh
 nix flake check --no-build --all-systems
 nix flake check --max-jobs 1 --cores 2
 ```
 
-The build checks include the packaged PTY smoke test, regressions for premature
-child exits, a type check against the exact packaged Harness peers, and focused
-question-answering, cancellation, session-resume, and offline multi-provider
-registration tests, private-dialog masking/paste/resize checks, native authorization
-and credential-persistence tests, and the upstream wizard regression suite. CI runs them on both
-supported architectures.
+The package build runs the upstream Harness tests, including the Pi-AI catalog, compatibility and replay tests, and checks every provider catalog through the installed services. It also tests native sign-in and credential storage, the OpenCode plugin (including the profile example from this guide), and starts the installed TUI in a PTY to open `/model` and `/provider`. The flake checks add:
 
-The session compatibility patch uses validated query-service log reads for resume
-titles and last-event timestamps. Reads are concurrency-limited; browsing a large
-history can take longer than a metadata-only scan.
+- `compatibility`: a type check of the patched TUI against the packaged Harness, tests for questions, cancellation, resume, providers, reasoning effort, last model, fork and image input, and the wizard's own tests
+- `images`: the packaged `read_image` tooling
+- `fork`: `/fork` end to end in a PTY
+- `launcher`: profile seeding and resets
+- `smoke-test`: makes sure the PTY smoke script catches a TUI that exits early
+- `formatting`: `nixfmt` on all Nix files
+
+None of them need network access or API keys, so live provider logins and actual image understanding aren't tested. CI runs everything on both architectures.
+
+Provider TypeScript sources and test scripts only exist in the check inputs; the installed package contains compiled JavaScript, type declarations and licenses. The build limits virtual memory while compiling and restores the original limit before the runtime checks.
+
+Installed files don't contain timestamps or temporary store paths. `nix build .#default --rebuild --no-link` confirms that a rebuild is byte-for-byte identical.
 
 ## License
 
-The packaging code is [MIT](../LICENSE). The built output contains upstream and third-party software under their own licenses; those license files and the DeepSeek Harness third-party notice are installed under `share/licenses/deepseek-harness-tui`.
+The packaging code is [MIT](../LICENSE). Upstream and third-party software in the build keep their own licenses, which are installed with the DeepSeek Harness third-party notice under `share/licenses/deepseek-harness-tui`.

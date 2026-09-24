@@ -1,16 +1,17 @@
 # Contributing
 
-Issues and pull requests are welcome for anything in this repository: the Nix package, runtime projection, launcher, profile, and docs.
+This is a personal build that I keep small. Bug reports and fixes are welcome. Please open an issue before working on a new feature, since many things are better done in your own profile patch than here.
 
-Report DeepSeek Harness bugs to the [upstream project](https://github.com/deepseek-ai/deepseek-harness/discussions) and dsh-tui bugs to the [TUI project](https://github.com/dsh-tui/dsh-tui/issues).
+Bugs in DeepSeek Harness itself go to the [Harness project](https://github.com/deepseek-ai/deepseek-harness/discussions), and bugs in the TUI to [dsh-tui](https://github.com/dsh-tui/dsh-tui/issues).
 
-See the [maintenance guide](docs/guide.md#maintenance) for source pins, compatibility patches, and runtime composition.
+Source pins and local patches are described in the [maintenance section](docs/guide.md#maintenance) of the guide. Patches have to apply with `--fuzz=0`. If you add one, add it to the [patch table](docs/guide.md#carried-patches) with the condition for removing it.
 
-Before submitting a packaging change, run:
+Before sending a change:
 
 ```sh
+nix fmt
 nix flake check --no-build --all-systems
 nix flake check --max-jobs 1 --cores 2
 ```
 
-If your change touches a source pin, compatibility patch, or the runtime dependency selection, run the checks natively on both supported architectures.
+Changes to pins, patches or runtime dependencies should be checked on both x86_64 and aarch64. CI does this for pull requests.

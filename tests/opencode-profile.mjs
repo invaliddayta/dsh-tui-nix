@@ -41,9 +41,9 @@ try {
   const { default: LlmRuntime } = await load('@deepseek-ai/dsh-llm')
   const yaml = await load('js-yaml')
   const bridgeName = 'dsh-credentials-opencode'
-  const section = guide.split(/^### OpenCode-Owned Credentials\s*$/m)[1]?.split(/^#{1,3} /m)[0]
+  const section = guide.split(/^### OpenCode credentials\s*$/im)[1]?.split(/^#{1,3} /m)[0]
   const example = section?.match(/```yaml\s*\n([\s\S]*?)\n```/)?.[1]
-  assert(example, 'Guide must contain the OpenCode-Owned Credentials YAML example')
+  assert(example, 'Guide must contain the OpenCode credentials YAML example')
   const profileDir = join(root, 'profiles', 'opencode-test')
   initProfile(profileDir, ['@deepseek-ai/dsh-base', '@dsh-tui/dsh-tui'], 'startup')
   const patchPath = join(profileDir, 'cordis.patch.yml')
