@@ -23,6 +23,9 @@
   yq-go,
   harness-src,
   dsh-tui-src,
+  dsh-pi-tui-src,
+  wl-clipboard,
+  xclip,
 }:
 let
   pnpm = pnpm_11.override { nodejs-slim = nodejs-slim_24; };
@@ -140,6 +143,7 @@ let
       pnpmConfigHook
       yq-go
       dsh-tui-src
+      dsh-pi-tui-src
       limitBuildMemory
       ;
     dshTuiPatch = ./dsh-tui.cordis.patch.yml;
@@ -270,6 +274,7 @@ stdenv.mkDerivation (finalAttrs: {
     cp ${harness-src}/LICENSE "$licenseDir/DEEPSEEK-HARNESS-LICENSE"
     cp ${harness-src}/THIRD_PARTY_NOTICES.md "$licenseDir/THIRD_PARTY_NOTICES.md"
     cp ${dsh-tui-src}/LICENSE "$licenseDir/DSH-TUI-LICENSE"
+    cp ${dsh-pi-tui-src}/LICENSE "$licenseDir/DSH-PI-TUI-IMAGE-INPUT-LICENSE"
     cp ${providers}/package/UPSTREAM-LICENSE "$licenseDir/PROVIDER-WIZARD-LICENSE"
 
     mkdir -p "$out/libexec/dsh/bin"
@@ -283,6 +288,13 @@ stdenv.mkDerivation (finalAttrs: {
           coreutils
           gitMinimal
           nodejs-slim_24
+        ]
+      } \
+      --suffix PATH : ${
+        # Ctrl+V image paste fallbacks; a user's own clipboard tools win.
+        lib.makeBinPath [
+          wl-clipboard
+          xclip
         ]
       } \
       --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ stdenv.cc.cc.lib ]} \

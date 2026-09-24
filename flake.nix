@@ -13,6 +13,13 @@
       url = "github:dsh-tui/dsh-tui/8bdc850732464e2c10278f47b4f2b82da38d801e";
       flake = false;
     };
+
+    # Image-input core (clipboard/file intake, draft placeholders, attachment
+    # admission) vendored from this MIT TUI; only src/image/* is used.
+    dsh-pi-tui-src = {
+      url = "github:XMoon/dsh-pi-tui/792c7ec19d1e7c554e67931573e79a7ef72bc617";
+      flake = false;
+    };
   };
 
   outputs =
@@ -21,6 +28,7 @@
       nixpkgs,
       deepseek-harness-src,
       dsh-tui-src,
+      dsh-pi-tui-src,
       ...
     }:
     let
@@ -37,7 +45,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
           package = pkgs.callPackage ./nix/package.nix {
             harness-src = deepseek-harness-src;
-            inherit dsh-tui-src;
+            inherit dsh-tui-src dsh-pi-tui-src;
           };
         in
         {

@@ -34,7 +34,8 @@ package.tui.overrideAttrs (_: {
     cp ${../tests/last-model.spec.ts} tests/nix-last-model.spec.ts
     cp ${../tests/fork.spec.ts} tests/nix-fork.spec.ts
     cp ${../tests/session-fork.spec.ts} tests/nix-session-fork.spec.ts
-    pnpm exec vitest run tests/nix-compatibility.spec.ts tests/nix-providers.spec.ts tests/nix-reasoning.spec.ts tests/nix-last-model.spec.ts tests/nix-fork.spec.ts tests/nix-session-fork.spec.ts --maxWorkers=1 --minWorkers=1
+    cp ${../tests/image-input.spec.ts} tests/nix-image-input.spec.ts
+    pnpm exec vitest run tests/nix-compatibility.spec.ts tests/nix-providers.spec.ts tests/nix-reasoning.spec.ts tests/nix-last-model.spec.ts tests/nix-fork.spec.ts tests/nix-session-fork.spec.ts tests/nix-image-input.spec.ts --maxWorkers=1 --minWorkers=1
     mkdir -p wizard-check/scripts wizard-check/lib/types/dsh-adapter
     cp ${package.providers}/checks/scripts/verify-provider-wizard.mjs wizard-check/scripts/
     cp -r ${package.providers}/package/lib/upstream/. wizard-check/lib/types/

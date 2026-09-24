@@ -17,6 +17,23 @@
         "type": "github"
       }
     },
+    "dsh-pi-tui-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1790240967,
+        "narHash": "sha256-AIfm+aTIAByVrksUcAAKFcSTAV/Km/jPAvjXOAUnf3M=",
+        "owner": "XMoon",
+        "repo": "dsh-pi-tui",
+        "rev": "792c7ec19d1e7c554e67931573e79a7ef72bc617",
+        "type": "github"
+      },
+      "original": {
+        "owner": "XMoon",
+        "repo": "dsh-pi-tui",
+        "rev": "792c7ec19d1e7c554e67931573e79a7ef72bc617",
+        "type": "github"
+      }
+    },
     "dsh-tui-src": {
       "flake": false,
       "locked": {
@@ -53,6 +70,7 @@
     "root": {
       "inputs": {
         "deepseek-harness-src": "deepseek-harness-src",
+        "dsh-pi-tui-src": "dsh-pi-tui-src",
         "dsh-tui-src": "dsh-tui-src",
         "nixpkgs": "nixpkgs"
       }

@@ -7,6 +7,7 @@
   pnpmConfigHook,
   yq-go,
   dsh-tui-src,
+  dsh-pi-tui-src,
   dshTuiPatch,
   limitBuildMemory,
 }:
@@ -82,6 +83,14 @@ stdenvNoCC.mkDerivation {
     patch -p1 --fuzz=0 < ${./tui-command-history.patch}
     patch -p1 --fuzz=0 < ${./tui-last-model.patch}
     patch -p1 --fuzz=0 < ${./tui-fork.patch}
+    # Image input: XMoon/dsh-pi-tui's structurally typed image core, copied
+    # verbatim, plus a local adapter wired in by tui-image-input.patch.
+    mkdir -p src/image
+    for module in types errors placeholder draft-store intake admission capability clipboard; do
+      install -m 0644 ${dsh-pi-tui-src}/src/image/$module.ts src/image/$module.ts
+    done
+    cp ${./image-input.ts} src/chat/image-input.ts
+    patch -p1 --fuzz=0 < ${./tui-image-input.patch}
     substituteInPlace src/startup.ts \
       --replace-fail 'dsh --profile tui' 'dsh-tui'
     substituteInPlace src/chat/skill-invocation.ts \
@@ -141,6 +150,7 @@ stdenvNoCC.mkDerivation {
       exit 1
     fi
     grep -F 'ctx.commands.execute(agent, text, [], controller.signal)' "$out/package/lib/index.js" >/dev/null
+    grep -F 'does not support image input' "$out/package/lib/index.js" >/dev/null
     grep -F 'dsh-tui' "$out/package/lib/startup.js" >/dev/null
 
     runHook postInstallCheck

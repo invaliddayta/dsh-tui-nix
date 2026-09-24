@@ -1,0 +1,151 @@
+diff --git a/src/components/content.ts b/src/components/content.ts
+index a4536a6..c2596d1 100644
+--- a/src/components/content.ts
++++ b/src/components/content.ts
+@@ -26,6 +26,11 @@ export function contentText(content: readonly ContentBlock[]): string {
+       case 'tool-result':
+         parts.push(contentText(block.content))
+         break
++      case 'image': {
++        const { name, width, height } = block.attachment
++        parts.push(`[image${name === undefined ? '' : ` ${name}`} ${width}×${height}]`)
++        break
++      }
+       default: {
+         const rawType = (block as { type?: unknown }).type
+         parts.push(`[${typeof rawType === 'string' ? rawType : 'content'}]`)
+diff --git a/src/index.ts b/src/index.ts
+index 240ad8d..8a994e8 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -71,7 +71,7 @@ import type {
+   TuiOverlaySession,
+   TuiTheme,
+ } from './extension/types.ts'
+-import { displayInlineText, displayText } from './components/text.ts'
++import { BRACKETED_PASTE_END, BRACKETED_PASTE_START, displayInlineText, displayText } from './components/text.ts'
+ import { brandText, createPalette, markdownTheme, renderPalette, selectTheme } from './components/theme.ts'
+ import { contentText, parseArguments } from './components/content.ts'
+ import {
+@@ -146,6 +146,7 @@ import {
+ import { createQuestionQueue } from './chat/questions.ts'
+ import { createResumeController } from './chat/resume.ts'
+ import { createForkController } from './chat/fork.ts'
++import { createImageInput, imageErrorMessage } from './chat/image-input.ts'
+ import type { TuiRuntime } from './runtime.ts'
+ import { WorkspaceFileSearch } from './chat/file-autocomplete.ts'
+ 
+@@ -374,6 +375,17 @@ export function createTuiChat(
+       : initial,
+     assembled: undefined,
+   }
++  // Ctrl+V, /image and dropped image paths stage `[image #N (W×H)]` drafts;
++  // submit admits them through ctx.attachments against the selected route.
++  const imageInput = createImageInput({
++    ctx,
++    cwd,
++    insert: text => { editor.insertTextAtCursor(text) },
++    draft: () => editor.getText(),
++    route: () => target.current,
++    notify: (message, kind) => { appendNotice(message, kind) },
++    requestRender: () => { requestRender() },
++  })
+   // `updatePromptValues` (defined below) closes over the model controller, but
+   // the controller needs `appendNotice`/`overlayManager`, defined after that
+   // closure. Declare here, assign once after those exist, and defer the first
+@@ -1195,6 +1207,7 @@ export function createTuiChat(
+       'Esc cancel turn • Ctrl+O cycle cards (collapse/expand/hide) • Ctrl+R toggle reasoning • Ctrl+L redraw',
+       'Ctrl+T cycle model reasoning effort (chat prompt or model picker)',
+       'Ctrl+C cancel while running; clear input or exit while idle • Ctrl+D exit',
++      'Ctrl+V paste a clipboard image • drop an image file or /image <path> to attach it',
+       '',
+       ...commandLines,
+       '/skill:<name> [instructions] — load a skill into the conversation',
+@@ -1364,6 +1377,19 @@ export function createTuiChat(
+         return { kind: 'success' }
+       },
+     })
++    commandCtx.commands.register({
++      name: 'image',
++      description: 'Attach an image file to the next message',
++      input: { hint: '<path>' },
++      handler: async ({ rawInput }) => {
++        try {
++          const placeholder = await imageInput.attachPath(rawInput)
++          return { kind: 'success', text: `Attached ${placeholder} — Enter to send.` }
++        } catch (error: unknown) {
++          return { kind: 'error', text: imageErrorMessage(error) }
++        }
++      },
++    })
+     commandCtx.commands.register({
+       name: 'clear',
+       description: 'Clear the transcript view (session history is unchanged)',
+@@ -1612,6 +1638,42 @@ export function createTuiChat(
+       appendNotice(`Invalid session reference: ${errorChain(error)}`, 'error')
+       return
+     }
++    if (imageInput.hasImages(parsed.text)) {
++      // Placeholders are only meaningful while their drafts are staged, so an
++      // image submission stays out of prompt history. Pin the drafts before
++      // clearing the editor; a failure restores the text while still pinned.
++      const references = parsed.references
++      const sessionReferences = ctx.get('sessionReferenceResolver')
++      if (references.length > 0 && sessionReferences === undefined) {
++        appendNotice('Session reference capability unavailable.', 'error')
++        return
++      }
++      const release = imageInput.pin(parsed.text)
++      const controller = new AbortController()
++      referenceControllers.add(controller)
++      editor.disableSubmit = true
++      editor.setText('')
++      void imageInput.prepare(parsed.text).then(async (content) => {
++        if (sessionReferences === undefined || references.length === 0) return { content, additionalContext: undefined }
++        const referenced = await sessionReferences.prepare(agent, content, references, controller.signal)
++        return { content: referenced.content, additionalContext: referenced.additionalContext }
++      }).then((prepared) => {
++        if (disposed) return
++        imageInput.consume(parsed.text)
++        dispatchMessage(prepared.content, prepared.additionalContext)
++      }, (error: unknown) => {
++        if (!disposed && !controller.signal.aborted) {
++          restoreSubmittedInput()
++          appendNotice(`Image not sent: ${imageErrorMessage(error)}`, 'error')
++        }
++      }).finally(() => {
++        release()
++        referenceControllers.delete(controller)
++        editor.disableSubmit = false
++        requestRender()
++      })
++      return
++    }
+     if (parsed.references.length === 0) {
+       editor.addToHistory(text)
+       editor.setText('')
+@@ -1653,6 +1715,16 @@ export function createTuiChat(
+ 
+   const removeInputListener = ui.addInputListener((data) => {
+     if (overlayManager.hasActiveOverlay()) return undefined
++    if (editor.focused && matchesKey(data, Key.ctrl('v'))) {
++      if (!isKeyRelease(data) && !isKeyRepeat(data)) imageInput.pasteClipboard()
++      return { consume: true }
++    }
++    // Terminals deliver a dropped file as a bracketed paste of its path; one
++    // made only of existing image paths is staged instead of inserted.
++    if (editor.focused && data.startsWith(BRACKETED_PASTE_START) && data.endsWith(BRACKETED_PASTE_END)
++      && imageInput.claimPastedPaths(data.slice(BRACKETED_PASTE_START.length, -BRACKETED_PASTE_END.length))) {
++      return { consume: true }
++    }
+     if (matchesKey(data, Key.ctrl('t'))) {
+       // Global listeners run before Pi-TUI filters key releases for components.
+       if (!isKeyRelease(data) && !isKeyRepeat(data)) modelController.queueReasoningCycle()
+@@ -1776,6 +1848,7 @@ export function createTuiChat(
+   const detachListeners = (): void => {
+     skillAbort.abort()
+     fileSearch.dispose()
++    imageInput.dispose()
+     removeInputListener()
+     disposeCommandChanges()
+     disposeSkillChanges()
