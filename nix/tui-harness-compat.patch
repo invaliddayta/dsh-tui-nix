@@ -1,17 +1,35 @@
 --- a/src/chat/questions.ts
 +++ b/src/chat/questions.ts
-@@ -9 +9,2 @@
+@@ -6,6 +6,7 @@
+  * @module @deepseek-ai/dsh-tui/chat/questions
+  */
+ 
 +import type { Agent } from '@deepseek-ai/dsh-agent'
  import { errorChain } from '@deepseek-ai/dsh-llm'
-@@ -32,2 +33,4 @@
+ import {
+   UserQuestionError,
+@@ -30,6 +31,8 @@
+ 
+ /** Collaborators the question queue needs from the chat channel. */
  export interface QuestionQueueDeps extends ChatChannelDeps {
 +  /** Agent scope that owns the human answerer. */
 +  readonly agent: Agent
    /** Current row budget after reserving the editor. */
-@@ -51 +54 @@
+   questionMaxHeight(): number
+ }
+@@ -48,7 +51,7 @@
+  * @returns the controller used at shutdown to drain and unregister.
+  */
+ export function createQuestionQueue(deps: QuestionQueueDeps): QuestionQueue {
 -  const { ctx, resolved, palette, overlayManager } = deps
 +  const { resolved, palette, overlayManager } = deps
-@@ -130,28 +133,26 @@
+   const questionQueue: PendingQuestion[] = []
+   let activeQuestion: PendingQuestion | undefined
+ 
+@@ -127,34 +130,32 @@
+     show()
+   }
+ 
 -  const unregister = ctx.userQuestions.registerProvider({
 -    ask(request) {
 -      return new Promise<AskUserQuestionAnswer>((resolveAnswer, reject) => {
@@ -31,15 +49,6 @@
 -            }
 -            // A non-active pending ask remains in the queue until this listener settles it.
 -            questionQueue.splice(questionQueue.indexOf(pending), 1)
--            rejectQuestion(pending)
--          },
--        }
--        request.signal?.addEventListener('abort', pending.onAbort, { once: true })
--        questionQueue.push(pending)
--        startNextQuestion()
--      })
--    },
--  })
 +  const unregister = deps.agent.ctx.on('user-questions/request', request =>
 +    new Promise<AskUserQuestionAnswer>((resolveAnswer, reject) => {
 +      const pending: PendingQuestion = {
@@ -52,7 +61,15 @@
 +        onAbort: () => {
 +          if (activeQuestion === pending) {
 +            activeQuestion = undefined
-+            rejectQuestion(pending)
+             rejectQuestion(pending)
+-          },
+-        }
+-        request.signal?.addEventListener('abort', pending.onAbort, { once: true })
+-        questionQueue.push(pending)
+-        startNextQuestion()
+-      })
+-    },
+-  })
 +            startNextQuestion()
 +            return
 +          }
@@ -66,14 +83,22 @@
 +      startNextQuestion()
 +    }),
 +  )
+ 
+   return {
+     rejectAll(): void {
 --- a/src/index.ts
 +++ b/src/index.ts
-@@ -972,3 +972,4 @@
+@@ -971,6 +971,7 @@
+ 
    const questions = createQuestionQueue({
      ctx,
 +    agent,
      resolved,
-@@ -1855,4 +1856,10 @@
+     palette,
+     overlayManager,
+@@ -1853,8 +1854,14 @@
+     settled = true
+     stopWaiting()
      ctx.effect(() => {
 -      const controller = createTuiChat(ctx, config, runtime)
 -      return () => controller.dispose()
@@ -86,3 +111,18 @@
 +        return () => {}
 +      }
      }, 'ui-tui')
+   }
+   const fail = (failedSessionId: SessionId, error: unknown): void => {
+--- a/src/components/transcript.ts
++++ b/src/components/transcript.ts
+@@ -18,7 +18,9 @@
+ import { diffLines as compareLines } from 'diff'
+ import type { Agent } from '@deepseek-ai/dsh-agent'
+ import type { ContentBlock, StreamChunk } from '@deepseek-ai/dsh-llm'
+-import type { JsonValue, SessionEvent, TodoItem } from '@deepseek-ai/dsh-session'
++import type { SessionEvent } from '@deepseek-ai/dsh-session'
++import type { JsonValue } from '@deepseek-ai/dsh-util-values'
++import type { TodoItem } from '@deepseek-ai/dsh-tool-todo'
+ import type {
+   TerminalCallView,
+   ToolCallView,

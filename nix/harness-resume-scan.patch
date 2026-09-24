@@ -1,0 +1,147 @@
+diff -urN a/packages/extensions/tool-cordis/src/api-catalog.ts b/packages/extensions/tool-cordis/src/api-catalog.ts
+--- a/packages/extensions/tool-cordis/src/api-catalog.ts
++++ b/packages/extensions/tool-cordis/src/api-catalog.ts
+@@ -5038,7 +5038,7 @@
+   },
+   {
+     name: 'SessionRecord',
+-    declaration: 'export interface SessionRecord {\n    header: SessionHeader;\n    live: boolean;\n    persisted: boolean;\n}',
++    declaration: 'export interface SessionRecord {\n    header: SessionHeader;\n    live: boolean;\n    persisted: boolean;\n    revision?: SessionPersistenceRevision;\n}',
+   },
+   {
+     name: 'SessionReferenceCandidate',
+@@ -5158,7 +5158,7 @@
+   },
+   {
+     name: 'SessionTitleObservation',
+-    declaration: 'export interface SessionTitleObservation {\n    session: SessionHeader;\n    title?: SessionTitleSnapshot;\n}',
++    declaration: 'export interface SessionTitleObservation {\n    session: SessionHeader;\n    title?: SessionTitleSnapshot;\n    lastActivityAt?: number;\n}',
+   },
+   {
+     name: 'SessionTitleObservationResult',
+diff -urN a/packages/session-query/session-query/src/corpus.ts b/packages/session-query/session-query/src/corpus.ts
+--- a/packages/session-query/session-query/src/corpus.ts	2026-09-23 19:07:39.189262145 +0200
++++ b/packages/session-query/session-query/src/corpus.ts	2026-09-23 19:12:49.374374535 +0200
+@@ -2,7 +2,7 @@
+ 
+ import type { Context, Fiber } from '@deepseek-ai/cordis'
+ import type { Session, SessionEvent, SessionHeader, SessionId , SessionLogOffset } from '@deepseek-ai/dsh-session'
+-import type SessionPersistence from '@deepseek-ai/dsh-session-persistence'
++import type { SessionPersistence, SessionPersistenceSnapshot } from '@deepseek-ai/dsh-session-persistence'
+ import type { SessionRecord } from './types.ts'
+ import { SessionQueryError } from './config.ts'
+ import { readColdSessionLog, type ColdSessionLog } from './cold-read.ts'
+@@ -64,8 +64,13 @@
+     const persisted = persistence === undefined ? [] : await listPersisted(persistence, signal)
+     signal?.throwIfAborted()
+     const records = new Map<SessionId, SessionRecord>()
+-    for (const header of persisted) {
+-      records.set(header.id, { header: structuredClone(header), live: false, persisted: true })
++    for (const snapshot of persisted) {
++      records.set(snapshot.header.id, {
++        header: structuredClone(snapshot.header),
++        live: false,
++        persisted: true,
++        revision: snapshot.revision,
++      })
+     }
+     for (const session of this._ctx.sessions.list()) {
+       const durable = records.get(session.id)
+@@ -74,6 +79,9 @@
+         header: structuredClone(session.header),
+         live: true,
+         persisted: durable !== undefined,
++        // The durable artifact's change token survives the live override so
++        // metadata-only consumers can still key fold caches by it.
++        ...durable?.revision === undefined ? {} : { revision: durable.revision },
+       })
+     }
+     return [...records.values()].sort(compareSessions)
+@@ -98,7 +106,7 @@
+     }
+     const persistence = this._persistence
+     if (persistence === undefined) throw notFound(sessionId)
+-    const listed = (await listPersisted(persistence, signal)).find(header => header.id === sessionId)
++    const listed = (await listPersisted(persistence, signal)).find(snapshot => snapshot.header.id === sessionId)?.header
+     signal?.throwIfAborted()
+     if (listed === undefined) throw notFound(sessionId)
+     const loaded = await inspectPersisted(persistence, sessionId, signal)
+@@ -156,7 +164,7 @@
+       return orderedResults(ids, resolved)
+     }
+ 
+-    let persisted: SessionHeader[]
++    let persisted: readonly SessionPersistenceSnapshot[]
+     try {
+       persisted = await listPersisted(persistence, signal)
+       signal?.throwIfAborted()
+@@ -167,7 +175,7 @@
+       }
+       return orderedResults(ids, resolved)
+     }
+-    const persistedById = new Map(persisted.map(header => [header.id, header]))
++    const persistedById = new Map(persisted.map(snapshot => [snapshot.header.id, snapshot.header]))
+     const resolvePersisted = async (sessionId: SessionId): Promise<void> => {
+       const listed = persistedById.get(sessionId)
+       if (listed === undefined) {
+@@ -256,10 +264,10 @@
+ async function listPersisted(
+   persistence: SessionPersistence,
+   signal?: AbortSignal,
+-): Promise<SessionHeader[]> {
++): Promise<readonly SessionPersistenceSnapshot[]> {
+   try {
+     const snapshots = await persistence.list(signal === undefined ? undefined : { signal })
+-    return snapshots.map(snapshot => snapshot.header)
++    return snapshots
+   } catch (error: unknown) {
+     if (signal?.aborted) signal.throwIfAborted()
+     throw new SessionQueryError(
+diff -urN a/packages/session-query/session-query/src/index.ts b/packages/session-query/session-query/src/index.ts
+--- a/packages/session-query/session-query/src/index.ts	2026-09-23 19:07:39.194860584 +0200
++++ b/packages/session-query/session-query/src/index.ts	2026-09-23 19:08:16.753305980 +0200
+@@ -252,9 +252,11 @@
+   ): Promise<SessionTitleObservationResult[]> {
+     return this._corpus.projectMany(sessionIds, (source): SessionTitleObservation => {
+       const title = foldSessionTitle(source.events)
++      const lastActivityAt = source.events.at(-1)?.time
+       return {
+         session: structuredClone(source.header),
+         ...title === undefined ? {} : { title },
++        ...lastActivityAt === undefined ? {} : { lastActivityAt },
+       }
+     }, signal)
+   }
+diff -urN a/packages/session-query/session-query/src/types.ts b/packages/session-query/session-query/src/types.ts
+--- a/packages/session-query/session-query/src/types.ts	2026-09-23 19:07:39.181262113 +0200
++++ b/packages/session-query/session-query/src/types.ts	2026-09-23 19:07:56.662828414 +0200
+@@ -15,6 +15,7 @@
+   OptionalSessionSeq,
+   SurfaceEvent,
+ } from '@deepseek-ai/dsh-session'
++import type { SessionPersistenceRevision } from '@deepseek-ai/dsh-session-persistence'
+ import type { SessionTitleSnapshot } from '@deepseek-ai/dsh-session-title'
+ import type { SessionSearchCursor } from './cursor.ts'
+ 
+@@ -31,6 +32,12 @@
+   live: boolean
+   /** Whether the active persistence backend currently lists the id, including a created-but-unmaterialized session it already observes. */
+   persisted: boolean
++  /**
++   * Durable change token of the listed artifact, present for every persisted
++   * row; absent for live-only records. Metadata-only consumers use it to key
++   * fold caches without reading a log.
++   */
++  revision?: SessionPersistenceRevision
+ }
+ 
+ /** One atomic live-preferred observation of a session's current model surface. */
+@@ -164,6 +171,8 @@
+   session: SessionHeader
+   /** Latest title snapshot, absent when the observed log has no title. */
+   title?: SessionTitleSnapshot
++  /** Timestamp of the last event in the observed log, absent when the log is empty. */
++  lastActivityAt?: number
+ }
+ 
+ /** One ordered result from a batch title observation. */

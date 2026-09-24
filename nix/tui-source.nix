@@ -65,6 +65,9 @@ stdenvNoCC.mkDerivation {
     cp ${./provider-widgets.ts} src/provider-widgets.ts
     cp ${./chat-fork.ts} src/chat/fork.ts
     cp ${./session-fork.ts} src/chat/session-fork.ts
+    # Replaces upstream's /resume controller: titles come from batched
+    # session-query reads plus a cache keyed by each log's revision.
+    cp ${./resume.ts} src/chat/resume.ts
     substituteInPlace tsdown.config.ts \
       --replace-fail "'src/startup.ts']" "'src/startup.ts', 'src/provider-widgets.ts']"
     node --input-type=module <<'EOF'
@@ -73,8 +76,8 @@ stdenvNoCC.mkDerivation {
     manifest.exports['./provider-widgets'] = './lib/provider-widgets.js'
     writeFileSync('package.json', JSON.stringify(manifest, null, 2))
     EOF
-    patch -p1 < ${./tui-harness-compat.patch}
-    patch -p1 < ${./tui-session-compat.patch}
+    # Every patch must apply exactly; regenerate it rather than accept fuzz.
+    patch -p1 --fuzz=0 < ${./tui-harness-compat.patch}
     patch -p1 --fuzz=0 < ${./tui-reasoning-effort.patch}
     patch -p1 --fuzz=0 < ${./tui-command-history.patch}
     patch -p1 --fuzz=0 < ${./tui-last-model.patch}
@@ -132,7 +135,7 @@ stdenvNoCC.mkDerivation {
     done
     grep -F 'from "@deepseek-ai/dsh-util-values"' "$out/package/lib/index.js" >/dev/null
     grep -F 'session.snapshotEvents()' "$out/package/lib/index.js" >/dev/null
-    grep -F 'foldSessionTitle(snapshot.events)' "$out/package/lib/index.js" >/dev/null
+    grep -F 'readTitleSnapshots' "$out/package/lib/index.js" >/dev/null
     if grep -F 'live.events' "$out/package/lib/index.js" >/dev/null; then
       echo "source-built TUI still reads the removed Session.events property" >&2
       exit 1

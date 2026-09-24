@@ -84,6 +84,10 @@ let
     ${lib.concatMapStringsSep "\n" (patch: "patch -p1 --fuzz=0 < ${patch}") piAiPatches}
     # Selected workspaces need their Node half, never their browser bundle.
     patch -p1 --fuzz=0 < ${./harness-host-build.patch}
+    # Session-query: carry the persistence revision on listed records and the
+    # last-activity time on batched title observations, so the TUI /resume scan
+    # can serve rows from metadata instead of whole-log reads.
+    patch -p1 --fuzz=0 < ${./harness-resume-scan.patch}
     mkdir -p nix
     cp ${./project-tui-runtime.mjs} nix/project-tui-runtime.mjs
     cp ${./build-runtime.mjs} nix/build-runtime.mjs

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -7,7 +7,8 @@ import LlmRuntime from '@deepseek-ai/dsh-llm'
 import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
 import FileSettingsProvider from '@deepseek-ai/dsh-settings-file'
-import { SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import { SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
+import { SessionPersistenceRevision } from '@deepseek-ai/dsh-session-persistence'
 import { createTuiTestHarness, disposeTuiTestHarness } from './harness.ts'
 import { HeadlessTerminal } from './headless-terminal.ts'
 
@@ -60,6 +61,8 @@ describe('packaged Harness compatibility', () => {
   beforeEach(async () => {
     terminal = new HeadlessTerminal(100, 32)
     handoff = vi.fn(async () => {})
+    // Keep every scan off the developer's durable title cache.
+    process.env.DSH_TUI_RESUME_TITLE_CACHE = 'off'
     harness = await createTuiTestHarness(terminal, vi.fn(), {
       omitInitialLifecycle: true,
       config: { resumeScanConcurrency: 1 },
@@ -71,6 +74,7 @@ describe('packaged Harness compatibility', () => {
   afterEach(async () => {
     if (harness !== undefined) await disposeTuiTestHarness(harness)
     await terminal.dispose()
+    delete process.env.DSH_TUI_RESUME_TITLE_CACHE
     vi.restoreAllMocks()
   })
 
@@ -148,6 +152,26 @@ describe('packaged Harness compatibility', () => {
       { header: saved, live: false, persisted: true },
       { header: corrupt, live: false, persisted: true },
     ])
+    const titles = vi.spyOn(query, 'readTitleSnapshots').mockResolvedValue([
+      {
+        sessionId: saved.id,
+        status: 'fulfilled',
+        value: {
+          session: saved,
+          title: {
+            title: 'Saved work',
+            messageSeqs: [],
+            source: { kind: 'fallback' },
+            eventSeq: SessionSeq(0),
+            updatedAt: 1,
+          },
+          lastActivityAt: 200,
+        },
+      },
+      { sessionId: corrupt.id, status: 'rejected', reason: new Error('corrupt log') },
+    ])
+    // The scan resolves rows without whole-log reads; only the chosen row's
+    // preflight fully reads (and replay-validates) its log.
     const read = vi.spyOn(query, 'readSession').mockImplementation(async id => {
       if (id === corrupt.id) throw new Error('corrupt log')
       return {
@@ -174,7 +198,9 @@ describe('packaged Harness compatibility', () => {
     await vi.waitFor(async () => expect(await terminal.snapshot()).not.toContain('Unreadable session'))
     terminal.send('\r')
     await vi.waitFor(() => expect(handoff).toHaveBeenCalledWith(saved.id, saved.cwd))
-    expect(read.mock.calls.filter(([id]) => id === saved.id)).toHaveLength(2)
+    expect(titles).toHaveBeenCalledTimes(1)
+    expect(titles).toHaveBeenCalledWith([saved.id, corrupt.id], expect.anything())
+    expect(read.mock.calls.filter(([id]) => id === saved.id)).toHaveLength(1)
   })
 
   it('stops scheduling resume reads when the picker is cancelled', async () => {
@@ -185,16 +211,111 @@ describe('packaged Harness compatibility', () => {
       { header: first, live: false, persisted: true },
       { header: second, live: false, persisted: true },
     ])
-    const pending = Promise.withResolvers<Awaited<ReturnType<typeof query.readSession>>>()
-    const read = vi.spyOn(query, 'readSession').mockReturnValue(pending.promise)
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof query.readTitleSnapshots>>>()
+    const titles = vi.spyOn(query, 'readTitleSnapshots').mockReturnValue(pending.promise)
     terminal.send('/resume')
     terminal.send('\r')
-    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(titles).toHaveBeenCalledOnce())
     terminal.send('\x1b')
     await vi.waitFor(async () => expect(await terminal.snapshot()).not.toContain('Resume session'))
-    pending.resolve({ session: first, inheritedEventCount: SessionLogOffset(0), events: [] })
+    pending.resolve([])
     await new Promise(resolve => setImmediate(resolve))
-    expect(read).toHaveBeenCalledOnce()
+    expect(titles).toHaveBeenCalledOnce()
     expect(handoff).not.toHaveBeenCalled()
+  })
+
+  it('serves a warm scan from the durable title cache without log reads', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-tui-resume-cache-'))
+    try {
+      process.env.DSH_TUI_RESUME_TITLE_CACHE = join(root, 'resume-titles.json')
+      const stored = {
+        ...harness.session.header, id: SessionId('cached-session'), createdAt: 100, cwd: '/cached-workspace',
+      }
+      const record = {
+        header: stored, live: false, persisted: true, revision: SessionPersistenceRevision('rev-one'),
+      }
+      const query = harness.ctx.sessionQuery
+      vi.spyOn(query, 'listSessions').mockResolvedValue([record])
+      const read = vi.spyOn(query, 'readSession')
+      const titles = vi.spyOn(query, 'readTitleSnapshots').mockResolvedValue([{
+        sessionId: stored.id,
+        status: 'fulfilled',
+        value: {
+          session: stored,
+          title: {
+            title: 'Cached work',
+            messageSeqs: [],
+            source: { kind: 'fallback' },
+            eventSeq: SessionSeq(0),
+            updatedAt: 1,
+          },
+          lastActivityAt: 500,
+        },
+      }])
+      const cold = async (): Promise<void> => {
+        terminal.send('/resume')
+        terminal.send('\r')
+        await vi.waitFor(async () => expect(await terminal.snapshot()).toContain('Resume session'))
+        terminal.send('\t')
+        await vi.waitFor(async () => expect(await terminal.snapshot()).toContain('Cached work'))
+      }
+      await cold()
+      expect(titles).toHaveBeenCalledTimes(1)
+      expect(titles).toHaveBeenCalledWith([stored.id], expect.anything())
+      // The cold scan publishes its fold before the picker reopens.
+      await vi.waitFor(async () =>
+        expect(await readFile(process.env.DSH_TUI_RESUME_TITLE_CACHE!, 'utf8')).toContain('Cached work'))
+      terminal.send('\x1b')
+      await vi.waitFor(async () => expect(await terminal.snapshot()).not.toContain('Resume session'))
+      await cold()
+      // The second scan serves every row from the revision-keyed cache.
+      expect(titles).toHaveBeenCalledTimes(1)
+      expect(read).not.toHaveBeenCalled()
+      // Titles are conversation content: the cache is owner-only.
+      expect((await stat(process.env.DSH_TUI_RESUME_TITLE_CACHE!)).mode & 0o777).toBe(0o600)
+      expect((await readdir(root)).filter(name => name.endsWith('.tmp'))).toEqual([])
+
+      // A changed artifact revision invalidates its row.
+      vi.mocked(query.listSessions).mockResolvedValue([
+        { ...record, revision: SessionPersistenceRevision('rev-two') },
+      ])
+      terminal.send('\x1b')
+      await vi.waitFor(async () => expect(await terminal.snapshot()).not.toContain('Resume session'))
+      await cold()
+      expect(titles).toHaveBeenCalledTimes(2)
+      await vi.waitFor(async () =>
+        expect(await readFile(process.env.DSH_TUI_RESUME_TITLE_CACHE!, 'utf8')).toContain('rev-two'))
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('shows cached rows before uncached title reads settle', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-tui-resume-cache-'))
+    try {
+      const path = join(root, 'resume-titles.json')
+      process.env.DSH_TUI_RESUME_TITLE_CACHE = path
+      const warm = { ...harness.session.header, id: SessionId('warm-session'), createdAt: 100, cwd: '/w' }
+      const cold = { ...warm, id: SessionId('cold-session') }
+      await writeFile(path, JSON.stringify({
+        v: 1, titles: { [warm.id]: { rev: 'warm-rev', title: 'Warm title', lastActivityAt: 300 } },
+      }))
+      const query = harness.ctx.sessionQuery
+      vi.spyOn(query, 'listSessions').mockResolvedValue([
+        { header: warm, live: false, persisted: true, revision: SessionPersistenceRevision('warm-rev') },
+        { header: cold, live: false, persisted: true, revision: SessionPersistenceRevision('cold-rev') },
+      ])
+      const pending = Promise.withResolvers<Awaited<ReturnType<typeof query.readTitleSnapshots>>>()
+      const titles = vi.spyOn(query, 'readTitleSnapshots').mockReturnValue(pending.promise)
+      terminal.send('/resume')
+      terminal.send('\r')
+      await vi.waitFor(() => expect(titles).toHaveBeenCalledWith([cold.id], expect.anything()))
+      terminal.send('\t')
+      await vi.waitFor(async () => expect(await terminal.snapshot()).toContain('Warm title'))
+      pending.resolve([{ sessionId: cold.id, status: 'rejected', reason: new Error('late') }])
+      await vi.waitFor(async () => expect(await terminal.snapshot()).toContain('Unreadable session'))
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })
